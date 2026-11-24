@@ -1,0 +1,107 @@
+ROBOT INTELIGENTE 4WD — FIRMWARE PRINCIPAL 1.0.0 (API 1)
+24 de noviembre de 2026
+
+INSTALACION
+1. Conservar el ZIP V7 original como respaldo. No modificar la ESP32-CAM.
+2. En Arduino IDE instalar el paquete esp32 de Espressif Systems y la biblioteca
+   ESP32Servo compatible con la versión del paquete esp32 instalada. WiFi,
+   WebServer y ArduinoOTA forman parte del paquete esp32.
+3. Abrir Robot4WD_Firmware_V1/Robot4WD_Firmware_V1.ino. Elegir ESP32 Dev Module
+   (si corresponde a la placa principal) y el puerto USB-C de esa placa.
+4. Editar CAMERA_PASSWORD (la clave actual de ESP32CAM-CARRO), DIAG_PASSWORD
+   (8-63 caracteres, propia), API_KEY (16-64 caracteres, distinta). No entregar
+   esas credenciales ni compartir capturas que las revelen. Si el nombre de la
+   red de cámara difiere, cambiar CAMERA_SSID. No poner claves reales en Git.
+   Con credenciales vacías, el firmware compila pero no habilita la red.
+5. Mantener ENABLE_OTA=false inicialmente. Verificar (compilar) antes de subir.
+   No se ha compilado con el toolchain ESP32 en el entorno de preparación.
+6. Para la carga, apagar/desconectar la alimentación de motores y servos;
+   alimentar el ESP32 por USB según el montaje. No conectar fuentes que puedan
+   realimentarse entre sí. Después, desconectar USB si así lo requiere el kit.
+7. Para pruebas físicas: ruedas suspendidas, brazo apoyado, interruptor al
+   alcance, fuente de servos regulada y GND común; nunca alimentar desde 3V3.
+   Si hay zumbido, atasco, reinicio o pérdida de control, cortar alimentación.
+   GPIO12 es pin de strapping; los estados al reset no están garantizados por
+   software. Verificar arranque sin movimiento antes de usar sobre el piso.
+
+PRIMERA PRUEBA (SIN MOVIMIENTO)
+- Encender cámara y ESP32 principal. Abrir monitor serie a 115200 baudios.
+- Buscar 'STA: 192.168.4.x' (IP por DHCP; no asumir .200).
+- Conectar PC a ESP32CAM-CARRO. Abrir http://IP-STA/api/health en navegador.
+  Esperado: {"ok":true,"firmware":"Robot4WD","version":"1.0.0",
+  "api_version":1,"sta_connected":true}.
+- Abrir http://192.168.4.1 en otra pestaña y comprobar video original de cámara.
+  No se garantiza que /stream esté en puerto 81: confirmar URL real.
+- Si falla la conexión STA, conectar a Robot4WD_Diagnostico y abrir
+  http://192.168.10.1/api/health. Esta red es para diagnóstico y no implica
+  acceso al video. El canal de la red AP puede cambiar al reconectar STA.
+- No armar el robot todavía. Enviar los resultados del monitor y health.
+
+CABLEADO (según PythonBridge V6; confirmar físicamente antes de energizar)
+Motor FL 26/25; FR 33/32; RL 13/12; RR 14/27. Garra GPIO21; base GPIO18.
+Garra 35..60°, inicial 60° (abierta); base 35..115°, inicial 75°.
+Los otros servos no se controlan. ENA/ENB con jumper: velocidad fija.
+El firmware no confirma corriente, colisiones, posición física ni agarre.
+
+CONTRATO DE API (para la nueva aplicación Python, no compatible con V7)
+HTTP local, respuestas JSON. GET /api/health público, GET /api/state autenticado.
+Toda petición salvo health y STOP lleva cabecera X-Robot-Key: <clave local>.
+Mutaciones POST con parámetros en query o application/x-www-form-urlencoded.
+No usar GET para actuadores. No exponer este servidor a Internet; HTTP no cifra.
+
+POST /api/arm: challenge=<valor de GET state>. Devuelve session y lease_ms.
+  El rearme requiere decisión explícita. No activa motores ni servos.
+POST /api/heartbeat: session, seq. Cada 250 ms aproximadamente, plazo 1200 ms.
+POST /api/drive: session, seq, fl, fr, rl, rr, ms. Direcciones -1,0,1;
+  pulso 50..700 ms; cuatro ceros no admitidos (usar STOP). Esperar a motor_activo
+  falso más 50 ms antes de enviar otro pulso. No hay renovación de pulsos activos.
+POST /api/servo/enable: session, seq, nombre=garra|base. Activación individual
+  a posición inicial; puede provocar un salto físico, apoyar el mecanismo.
+  Esperar brazo_ocupado=false (800 ms iniciales). Luego activar otro si procede.
+POST /api/servo: session, seq, nombre, grado. Paso de 2 grados cada 65 ms y
+  200 ms de asentamiento lógico. Esperar brazo_ocupado=false antes de mover.
+POST /api/stop: sin sesión ni clave. Enclava parada, cancela objetivos de
+  servos y desarma; conserva señal PWM para sujeción. No corta electricidad.
+POST /api/release: nombre, confirm=1. Solo desarmado y tras apoyar el brazo.
+  Quita PWM; el mecanismo puede moverse por gravedad.
+
+La sesión y secuencia son enteros uint32 positivos. Un único emisor serializado
+asigna seq creciente para heartbeat y comandos (sin reintentos automáticos de
+movimiento). Un comando válido de sesión consume seq aunque un interlock lo
+rechace. 409 significa conflicto o sesión inválida; consultar state y detener
+ante incertidumbre. 400 parámetros inválidos, 403 autenticación incorrecta.
+STOP invalida la sesión; no rearmar automáticamente. GET state no renueva lease.
+La app debe emitir heartbeat solo mientras esté sana y se permita operar; en
+modo automático, perder video/datos frescos implica STOP y no renovar lease.
+Priorizar STOP y usar timeouts cortos de red. No poner heartbeat en una tarea
+que siga renovando incondicionalmente si la IA o el controlador quedan colgados.
+Una sola fuente de órdenes (manual o auto). Cambiar modo implica STOP/rearme.
+
+SEGURIDAD Y ESTADO
+- Tarea FreeRTOS de vigilancia separada de las peticiones HTTP. Corta el pulso
+  al vencer y cancela movimientos ante expiración del heartbeat o cambio STA.
+  No es seguridad certificada ni una garantía de tiempo real duro.
+- No permite mover ruedas durante cambio/asentamiento de un servo, ni cambiar
+  ambos ángulos simultáneamente. Permite ruedas con servos manteniendo PWM;
+  verificar alimentación en forma gradual. El tiempo de asentamiento es una
+  estimación, no una medición física. El interruptor físico sigue siendo vital.
+- GET state: armed, maintenance, reason, challenge, last_seq, motor_activo,
+  motor_remaining_ms, directions, garra, base, garra_objetivo, base_objetivo,
+  servo_garra_activo, servo_base_activo, brazo_ocupado, heartbeat_remaining_ms,
+  sta_connected, sta_ip, diag_ip. Los valores de ángulo son órdenes de software.
+- El tráfico HTTP comparte Wi-Fi con video. Medir latencia y estabilidad antes
+  de autonomía. No se ha medido todavía con el robot.
+
+OTA (OPCIONAL, NO HABILITADA EN LA ENTREGA INICIAL)
+Si se elige una partición con OTA y se valida la carga USB, puede habilitarse
+ENABLE_OTA y establecer una OTA_PASSWORD propia. ArduinoOTA de Arduino IDE
+(ubicación de red robot4wd). Solo se atiende desarmado, ruedas quietas y ambos
+servos liberados, con mecanismo apoyado. No apagar durante actualización.
+La activación de esta opción requiere una carga inicial por USB. Si falla OTA,
+recuperar por USB. No es la ruta HTTP /api/update del firmware viejo.
+
+ESTADO DE VALIDACION
+Código elaborado a partir del firmware V6 y sus parámetros reales. No se ha
+cargado ni ejecutado en hardware ni compilado con el SDK ESP32 aquí. Primera
+puerta: compilación en Arduino IDE y pruebas de red sin movimiento; después,
+validar protecciones, ruedas, servos, alimentación y cámara simultánea.

@@ -1,0 +1,7 @@
+# Versiones con ruedas Windows x64 / Python 3.12 verificadas en esta fase.
+# Una única distribución aporta cv2 y ArUco.
+-c requirements-lock.txt
+opencv-contrib-python==4.12.0.88
+numpy==2.2.6
+Pillow==12.0.0
+requests==2.32.5

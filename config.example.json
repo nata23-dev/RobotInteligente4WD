@@ -1,0 +1,97 @@
+{
+  "simulation": true,
+  "robot_url": "",
+  "camera_url": "",
+  "api_key": "",
+  "timeout_s": 0.18,
+  "heartbeat_s": 0.25,
+  "controller_lease_s": 0.65,
+  "camera_retry_s": 1.5,
+  "camera_timeout_ms": 1500,
+  "frame_max_age_s": 0.8,
+  "pulse_ms": 150,
+  "pulse_min_ms": 50,
+  "pulse_max_ms": 700,
+  "patterns": {
+    "adelante": [
+      -1,
+      1,
+      -1,
+      1
+    ],
+    "atras": [
+      1,
+      -1,
+      1,
+      -1
+    ],
+    "izquierda": [
+      1,
+      1,
+      -1,
+      -1
+    ],
+    "derecha": [
+      -1,
+      -1,
+      1,
+      1
+    ],
+    "girar_izquierda": [
+      -1,
+      -1,
+      -1,
+      -1
+    ],
+    "girar_derecha": [
+      1,
+      1,
+      1,
+      1
+    ],
+    "diagonal_frente_izquierda": [
+      -1,
+      0,
+      0,
+      1
+    ],
+    "diagonal_frente_derecha": [
+      0,
+      1,
+      -1,
+      0
+    ],
+    "diagonal_atras_izquierda": [
+      0,
+      -1,
+      1,
+      0
+    ],
+    "diagonal_atras_derecha": [
+      1,
+      0,
+      0,
+      -1
+    ]
+  },
+  "servos": {
+    "garra": {
+      "min": 35,
+      "max": 60,
+      "home": 60,
+      "closed": 35
+    },
+    "base": {
+      "min": 35,
+      "max": 115,
+      "home": 75
+    }
+  },
+  "aruco": {
+    "dictionary": "DICT_4X4_50",
+    "cubo": 0,
+    "cilindro": 1,
+    "prisma_triangular": 2
+  },
+  "dataset_dir": "dataset"
+}
