@@ -48,3 +48,13 @@ Objetivos futuros: 10–15 FPS, HTTP p95 ≤150 ms, inferencia p95 ≤100 ms y o
 Se conserva el historial de la bitácora y se aplica su decisión más reciente (sección 13): aplicación nueva y API 1, por encima de propuestas previas de ampliar V7. La calibración V7 está vacía; 20.5 cm/350 ms permanece antecedente. La distribución del firmware del ZIP carece de credenciales intencionalmente; una copia local preconfigurada tenía una clave inferior al mínimo, por lo que esa copia no iniciaría la red sin corrección manual. No fue modificada.
 
 Antes de implementar la autonomía: aprobar la puerta física, estabilizar video y entorno, capturar datos reales por sesiones y autorizar Fase 02. Después, implementar percepción e inferencia fuera del hilo gráfico, extender la señal de salud a esas etapas y probar primero mediante replay/simulación explícita.
+
+## Presentación Fase 01.1 — 24/11/2026
+
+La capa `ui/` utiliza tema claro, tokens comunes e iconos lineales propios. La navegación lateral se implementa mediante `PageStack`, compatible con `select/index` y el evento de cambio utilizado por las pruebas originales. Solo se muestra la página activa. La selección invoca el mismo `Controller.change_mode` de la Fase 01; Configuración conserva el propietario actual. El botón STOP GLOBAL está en la cabecera, fuera de páginas y áreas desplazables.
+
+Los formularios sustituyen al editor JSON y producen exactamente el schema existente, pasando por `validate` y `Application.update_config` sin cambios. `ui/preferences.py` conserva exclusivamente la meta visual del Dataset en `ui.local.json`, excluido de Git. `ui/dataset_view.py` lee originales existentes desde el manifiesto, excluye fixtures, faltantes, duplicados y rutas fuera del destino; prepara un thumbnail en el trabajador de archivos existente. No modifica `dataset/capture.py` ni genera entrenamiento.
+
+`Card`, `Badge`, `Metric`, `Video`, `EventLog`, `ScrollFrame` y helpers de formulario/confirmación centralizan la presentación. El hilo gráfico conserva su señal de vida cada 80 ms y limita la telemetría a unos 240 ms. La conversión de video mantiene aspecto y descarta repintados del mismo ID/tamaño; no se crean widgets por fotograma. Las capturas de evidencia usan el identificador de la propia ventana, evitando incluir otras aplicaciones del escritorio.
+
+Sin cambios en `app/`, `control/`, `hardware/`, `ai/`, `dataset/`, `firmware/`, `main.py` ni requisitos de ejecución. Tampoco se modificaron las 50 pruebas originales. La diferencia queda limitada a presentación, sus pruebas y documentación. Consultar `DESIGN_SYSTEM.md` y `VALIDACION_UI_FASE01_1.md` para geometría, contraste, evidencias y límites de escalado.

@@ -5,6 +5,7 @@ referencias_locales/
 /Robot4WD_Firmware_V1.ino
 *.zip
 config.local.json
+ui.local.json
 config.local.*
 __pycache__/
 *.py[cod]

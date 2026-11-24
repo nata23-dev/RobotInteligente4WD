@@ -1,6 +1,6 @@
-# Robot Inteligente 4WD — Fase 01
+# Robot Inteligente 4WD — Fase 01.1
 
-Aplicación local de escritorio para supervisar y operar manualmente el robot mediante **Robot4WD 1.0.0 / API 1**. La primera ejecución usa **simulación**, sin conectar ni armar hardware. La pestaña Automático abre por defecto; CNN, heurística, control difuso y navegación están pendientes y su inicio está deshabilitado.
+Aplicación local de escritorio para supervisar y operar manualmente el robot mediante **Robot4WD 1.0.0 / API 1**. La primera ejecución usa **simulación**, sin conectar ni armar hardware. La sección Automático abre por defecto; CNN, heurística, control difuso y navegación están pendientes y su inicio está deshabilitado. La Fase 01.1 incorpora identidad clara y navegación lateral sobre la base funcional de la Fase 01.
 
 Esta entrega de software no certifica el robot físico. No se enviaron órdenes al hardware durante su desarrollo. Los patrones recuperados de V7, el agarre, la alimentación y el video real requieren validación del operador. La parada de software no corta electricidad.
 
@@ -43,7 +43,7 @@ El simulador genera estado lógico de actuadores y errores de protocolo; no gene
 
 1. Lea [el plan físico](docs/PLAN_DE_PRUEBAS_FISICAS.md). Confirme firmware instalado, cableado y alimentación con los actuadores inicialmente sin energía, ruedas suspendidas, brazo apoyado e interruptor físico accesible.
 2. Conecte la PC a `ESP32CAM-CARRO`, si la topología real lo permite. Obtenga la IP DHCP del principal desde monitor serie a 115200. No suponga `.200`. La red `Robot4WD_Diagnostico` en `192.168.10.1` permite diagnóstico, pero no garantiza acceso a cámara.
-3. En Configuración introduzca la clave local en el campo protegido. Edite `robot_url`, `camera_url` y `simulation: false` en el editor JSON. Guarde y confirme el cambio explícito a hardware real. El contenido de `api_key` del editor se sustituye por el campo protegido.
+3. En Configuración → Conectividad introduzca la dirección HTTP del ESP32, la URL del video y la clave local en su campo oculto. Desmarque Simulación, guarde y confirme el cambio explícito a hardware real. El JSON interno y sus validaciones se conservan; no hace falta editarlo manualmente.
 4. Pulse Verificar conexión/API. Debe identificar Robot4WD **1.0.0**, API **1**, y obtener estado autenticado. La aplicación rechaza PythonBridgeV6.
 5. Pulse Iniciar video con la URL real comprobada, incluido su puerto y ruta. La dirección prevista de cámara es `192.168.4.1`; no hay URL ni puerto supuestos en la configuración inicial.
 6. Sin armar, compruebe STOP y estado desarmado. Complete pruebas de red, caducidad y alimentación del plan. Solo el operador podrá autorizar después el armado y las pruebas individuales.
@@ -54,7 +54,9 @@ No cargar firmware, mover ruedas ni activar servos automáticamente. El firmware
 
 `config.example.json` no contiene claves. `config.local.json` es privado y está excluido de Git; se crea con valores iniciales en este equipo y se guarda atómicamente desde la aplicación. No comparta ese archivo. El campo de clave se oculta visualmente, pero la configuración local está en texto legible bajo los permisos de su cuenta de Windows. HTTP del firmware tampoco cifra la clave; use la red local controlada.
 
-El editor permite cambiar patrones, duración, límites conservadores, timeout, heartbeat, reconexión, directorio del dataset y revisar los destinos ArUco. Se rechazan límites fuera de firmware, patrones de ceros, tipos incorrectos y cambios de HOME incompatibles. ArUco queda fijado para esta fase en DICT_4X4_50, 0=cubo, 1=cilindro, 2=prisma triangular.
+Los formularios de Conectividad, Hardware, Calibración, Visión artificial y Mantenimiento permiten cambiar patrones, duración, límites conservadores, timeout, heartbeat, reconexión, directorio del dataset y salud del controlador. Las categorías Inteligencia artificial y Estaciones muestran contratos pendientes y destinos fijados para esta fase. Se rechazan límites fuera de firmware, patrones de ceros, tipos incorrectos y cambios de HOME incompatibles. ArUco queda fijado en DICT_4X4_50, 0=cubo, 1=cilindro, 2=prisma triangular.
+
+El Dataset muestra totales por forma y color desde el manifiesto de originales reales existentes. Su meta inicial de 150 imágenes por clase se puede cambiar y guardar en `ui.local.json`, una preferencia visual privada separada del schema de control. Cambiar la meta no genera muestras ni cambia el comportamiento del robot.
 
 Dataset guarda originales PNG sin anotaciones en `dataset/images/forma/sesion/`. El manifiesto CSV incluye etiqueta humana, color, sesión, UTC, ID, tiempo monotónico de recepción, antigüedad al guardar y dimensiones. No guarda URL ni credenciales. Solo acepta fotogramas frescos con el robot desarmado. Las ráfagas y división por sesiones están pendientes. El contador excluye fixtures sintéticos de pruebas.
 
@@ -66,9 +68,18 @@ Las mediciones de desplazamiento se introducen después de una prueba manual, co
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 .\.venv\Scripts\python.exe main.py --smoke-ui
 .\.venv\Scripts\python.exe tests\ui_validate.py
+.\.venv\Scripts\python.exe tests\ui_redesign_validate.py
 ```
 
-El último comando requiere escritorio gráfico: valida las cuatro pestañas, ausencia de solicitudes al arranque, distribución a dos tamaños y un pulso/STOP **exclusivamente simulado**. Guarda evidencias locales. Los frames sintéticos se usan solo en directorios temporales de pruebas, nunca como datos del robot real.
+Las pruebas gráficas requieren escritorio: `ui_validate.py` conserva el chequeo original; `ui_redesign_validate.py` añade recortes verticales/horizontales, 1280×720, 1366×768, 1600×900 y 1920×1080 con comprobación de tamaño efectivamente aplicado, categorías de formularios, escalados tipográficos virtuales y STOP simulado. Guarda evidencia en `evidencias/ui_fase01_1/`. Los frames sintéticos se usan solo en pruebas y nunca como datos del robot real.
+
+## Interfaz Fase 01.1
+
+Tema claro, paleta centralizada, iconos lineales locales y navegación lateral. Automático reúne visor original/procesado, contratos de los cuatro módulos de IA, ocho etapas y registro. Manual conserva todos los controles y añade un esquema físico FL/FR/RL/RR. Dataset reúne captura y distribución real; Configuración utiliza siete categorías de formularios. STOP GLOBAL permanece en la cabecera, fuera del contenido desplazable. `Alt+1` a `Alt+4` cambian de sección y `Esc` solicita STOP; no hay atajos de movimiento continuo.
+
+La navegación usa los mismos cambios de propietario que antes: Manual/Dataset/Automático detienen y desarman al cambiar cuando existía conexión; Configuración conserva el modo para diagnóstico. Ninguna navegación arma. El visor procesado está señalado como pendiente y no inventa imágenes. Captura queda deshabilitada si falta un frame fresco o hay actuadores autorizados/ocupados.
+
+Consulte [el sistema de diseño](docs/DESIGN_SYSTEM.md) y [el informe UX/UI](docs/VALIDACION_UI_FASE01_1.md). No se agregaron dependencias de ejecución ni se modificaron firmware, HTTP, sesiones, heartbeat o seguridad.
 
 ## Mapa del proyecto
 
