@@ -15,6 +15,7 @@ dataset/images/*
 !dataset/images/.gitkeep
 dataset/metadata/*
 !dataset/metadata/.gitkeep
+dataset/derived/
 evidencias/*
 !evidencias/.gitkeep
 calibration/*.csv

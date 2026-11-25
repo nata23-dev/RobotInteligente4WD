@@ -15,6 +15,8 @@ from hardware.bridge import HTTPBridge
 from hardware.camera import Camera
 from hardware.simulator import Simulator
 from dataset.capture import DatasetCapture
+from ai.vision import VisionWorker
+from dataset.burst import Burst
 
 
 def setup_logging():
@@ -56,8 +58,11 @@ class Application:
         self.dispatcher = Dispatcher(bridge, stop_bridge, c)
         self.controller = Controller(self.dispatcher)
         self.camera = Camera(c)
+        self.vision = VisionWorker(self.camera, c)
+        self.vision.start()
         destination = Path(c['dataset_dir'])
         self.dataset = DatasetCapture(destination if destination.is_absolute() else ROOT / destination)
+        self.burst = Burst(self.camera.snapshot, self._capture_now, self.capture_guard, self.event)
         self.dispatcher.start()
 
     def event(self, kind, payload):
@@ -120,6 +125,8 @@ class Application:
         def apply():
             previous = self.config
             try:
+                self.burst.stop()
+                self.vision.stop()
                 self.camera.stop()
                 self.dispatcher.close()
                 if self.dispatcher.safety.status.startswith('Parada no confirmada'):
@@ -139,18 +146,29 @@ class Application:
 
     def capture(self, shape, color, session):
         camera = self.camera
-        dataset = self.dataset
-        def task():
-            snap = camera.snapshot()
-            if not snap['fresh']:
-                raise ValueError('No hay fotograma fresco de la cámara real')
-            state = self.dispatcher.state
-            if state.get('motor_activo') or state.get('brazo_ocupado') or self.dispatcher.safety.session:
-                raise PermissionError('Capturar con el robot desarmado y actuadores en reposo')
-            path = dataset.save(snap['frame'], shape, color, session,
-                                max_age=self.config['frame_max_age_s'])
-            self.event('capture', (path, dataset.counts()))
-        self.job(task)
+        self.job(lambda: self._capture_now(shape,color,session, expected_camera=camera))
+
+    def capture_guard(self):
+        if self.closing.is_set() or self.reconfiguring:
+            raise PermissionError('Captura cancelada por cierre o reconfiguración')
+        state=self.dispatcher.state
+        if state.get('armed') or state.get('motor_activo') or state.get('brazo_ocupado') or self.dispatcher.safety.session or self.dispatcher.active or not self.dispatcher.queue.empty():
+            raise PermissionError('Capturar con el robot desarmado y actuadores en reposo')
+
+    def _capture_now(self, shape, color, session, frame=None, expected_camera=None):
+        if expected_camera is not None and expected_camera is not self.camera: raise ValueError('La cámara cambió')
+        self.capture_guard()
+        snap=self.camera.snapshot()
+        if not snap['fresh']: raise ValueError('No hay fotograma fresco')
+        frame=frame or snap['frame']
+        if frame.generation!=snap['frame'].generation: raise ValueError('La sesión de cámara cambió')
+        path,record=self.dataset.save_record(frame,shape,color,session,self.config,self.capture_guard)
+        self.event('quality',record['quality'])
+        self.event('capture',(path,self.dataset.counts()))
+
+    def start_burst(self,shape,color,session,count=None,interval=None):
+        options=self.config['dataset_options']
+        self.burst.start(shape,color,session,count if count is not None else options['burst_count'],interval if interval is not None else options['burst_interval_s'])
 
     def record_calibration(self, movement, ms, measurement, unit):
         if movement not in self.config['patterns']:
@@ -186,12 +204,16 @@ class Application:
         if self.closed:
             return
         self.closing.set()
+        self.burst.stop()
         try:
             with self.operation_lock:
                 try:
                     self.dispatcher.close()
                 finally:
-                    self.camera.stop()
+                    try:
+                        self.vision.stop()
+                    finally:
+                        self.camera.stop()
         finally:
             if threading.current_thread() is not self.worker:
                 self.worker.join(5)

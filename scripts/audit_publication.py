@@ -63,6 +63,7 @@ def private_path(name):
             "logs/",
             "evidencias/",
             "dataset/images/",
+            "dataset/derived/",
             "dataset/metadata/",
             "models/",
         )
