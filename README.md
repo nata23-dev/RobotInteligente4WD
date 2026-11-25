@@ -1,5 +1,7 @@
 # Robot Inteligente 4WD
 
+**Fase 03 implementada en software, 24/11/2026.** Rama de revisión `feat/fase-03-vision`; `main` conserva la base estable `4bd6ba6`. Incluye orientación y ajustes digitales, Automático con visor Original/Procesada/Máscara, HSV, seguimiento visual, ArUco, ROI, ráfagas cancelables, calidad, recortes trazables y división por sesiones. No se contactó hardware; autonomía, CNN, lógica difusa y heurística siguen bloqueadas o pendientes. Véanse [la guía de uso](docs/VISION_Y_DATASET_FASE03.md) y [la validación](docs/VALIDACION_FASE03.md). Los informes anteriores conservan su contexto histórico.
+
 Aplicación local de escritorio para supervisar y operar manualmente el robot mediante **Robot4WD 1.0.0 / API 1**. La primera ejecución usa **simulación**, sin conectar ni armar hardware. La sección Automático abre por defecto; CNN, heurística, control difuso y navegación están pendientes y su inicio está deshabilitado. La Fase 01.1 incorpora identidad clara y navegación lateral sobre la base funcional de la Fase 01.
 
 Durante la construcción y esta consolidación automatizada no se enviaron órdenes al hardware. El operador reportó posteriormente conexión real, video simultáneo y pruebas lógicas de sesión/STOP; esos avances parciales están registrados en la bitácora. No certifican la seguridad física completa. **El robot está fuera de servicio temporalmente por una incidencia de alimentación y un giro inesperado de una rueda al encender. La autonomía permanece bloqueada.** La parada de software no corta electricidad.
@@ -12,7 +14,7 @@ Proyecto académico de Inteligencia Artificial, con entrega el **30 de noviembre
 - **Fase 01.1:** interfaz clara con navegación lateral y formularios; se conserva sin un nuevo rediseño de Automático.
 - **Fase 02:** comprobaciones físicas iniciales comunicadas por el operador, con cierre formal pendiente; no existe un commit independiente que implemente otra arquitectura.
 - **Fase 02.1:** consolidación, auditoría y publicación del estado completo; consultar [el informe de consolidación](docs/CONSOLIDACION_FASE02_1.md).
-- **Fase 03:** [planificada](docs/PLAN_FASE03.md), sin implementar: cámara, nuevo Automático, visión y herramientas del dataset.
+- **Fase 03:** software de las subfases 03.1–03.4 implementado en rama de revisión; [estado y pendientes físicos](docs/PLAN_FASE03.md). No se han confirmado controles remotos de la cámara ni validado físicamente la visión.
 
 Fuente central de continuidad: [ESTADO_PROYECTO_ROBOT_INTELIGENTE.md](ESTADO_PROYECTO_ROBOT_INTELIGENTE.md). Los informes históricos conservan los resultados de cada fase y no sustituyen la ejecución actual de pruebas.
 
@@ -86,7 +88,7 @@ Los formularios de Conectividad, Hardware, Calibración, Visión artificial y Ma
 
 El Dataset muestra totales por forma y color desde el manifiesto de originales reales existentes. Su meta inicial de 150 imágenes por clase se puede cambiar y guardar en `ui.local.json`, una preferencia visual privada separada del schema de control. Cambiar la meta no genera muestras ni cambia el comportamiento del robot.
 
-Dataset guarda originales PNG sin anotaciones en `dataset/images/forma/sesion/`. El manifiesto CSV incluye etiqueta humana, color, sesión, UTC, ID, tiempo monotónico de recepción, antigüedad al guardar y dimensiones. No guarda URL ni credenciales. Solo acepta fotogramas frescos con el robot desarmado. Las ráfagas y división por sesiones están pendientes. El contador excluye fixtures sintéticos de pruebas.
+Dataset guarda originales PNG sin anotaciones en `dataset/images/forma/sesion/`. El manifiesto CSV incluye etiqueta humana, color, sesión, UTC, ID, tiempo monotónico de recepción, antigüedad al guardar y dimensiones. No guarda URL ni credenciales. Solo acepta fotogramas frescos con el robot desarmado y actuadores en reposo. Fase 03 agrega ráfagas, calidad, recortes orientados sin filtros/overlays en `derived/`, sidecar versionado y división por sesiones completas. El contador y la división excluyen fixtures sintéticos de pruebas.
 
 Las mediciones de desplazamiento se introducen después de una prueba manual, con movimiento, pulso, valor y unidad; se registran en `calibration/mediciones.csv`. El antecedente 20.5 cm/350 ms de la bitácora no se importa como calibración vigente. Los registros rotan en `logs/` y se exportan desde Configuración a `evidencias/`.
 
@@ -101,6 +103,10 @@ Las mediciones de desplazamiento se introducen después de una prueba manual, co
 ```
 
 `scripts/check_software.py` ejecuta la suite existente con un cerco adicional: solo permite loopback para las pruebas de HTTP y bloquea abrir la cámara física. No modifica `config.local.json`. Los resultados quedan en `evidencias/software_checks/`. Para ejecutarlo en este proyecto necesita el entorno gráfico requerido por las pruebas Tk. La referencia histórica fue de 50 pruebas; los resultados actuales y cualquier fallo corregido se detallan en [el informe](docs/CONSOLIDACION_FASE02_1.md).
+
+Validación Fase 03: `python scripts/check_software.py --output evidencias/fase03/final` y `python scripts/validate_phase03.py` usando `.venv/Scripts/python.exe`. El segundo abre la aplicación real con `fixture_prueba`, bloquea toda red, usa destino temporal, captura evidencias locales y mide QVGA/VGA; no incorpora imágenes al dataset real. El mínimo admitido sigue siendo 1200×650; 1024×768 requiere mayor ancho de escritorio. 1600/1920 se verificaron geométricamente en el monitor de desarrollo 1366×768, sin afirmar inspección física en un monitor mayor.
+
+Marcadores: [PDF A4 de estaciones](docs/recursos/estaciones_aruco.pdf), patrón propuesto de 10 cm, imprimir al 100 % y medir. Para regenerarlo: `python scripts/generate_markers.py`, con ReportLab opcional como herramienta de documentación. Las dependencias de ejecución de la aplicación permanecen sin cambios.
 
 Las pruebas gráficas requieren escritorio: `ui_validate.py` conserva el chequeo original; `ui_redesign_validate.py` añade recortes verticales/horizontales, 1280×720, 1366×768, 1600×900 y 1920×1080 con comprobación de tamaño efectivamente aplicado, categorías de formularios, escalados tipográficos virtuales y STOP simulado. Guarda evidencia en `evidencias/ui_fase01_1/`. Los frames sintéticos se usan solo en pruebas y nunca como datos del robot real.
 

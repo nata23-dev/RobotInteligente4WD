@@ -1,4 +1,10 @@
-# Plan de Fase 03 — pendiente de autorización e implementación
+# Plan de Fase 03 — actualización de implementación
+
+## Estado vigente — 24/11/2026
+
+La solicitud de Fase 03 autorizó implementar software sin contactar hardware. Se implementaron 03.1 (orientación, ajustes digitales, escalado y adaptación remota bloqueada), 03.2 (visor 3:1, vistas, ampliación, diagnóstico), 03.3 (HSV, contornos, objetivo visual, ROI, ArUco e imprimibles) y 03.4 (ráfagas, calidad, derivados, sidecar y división por sesiones). Ver [guía](VISION_Y_DATASET_FASE03.md) y [validación](VALIDACION_FASE03.md). Los apartados siguientes preservan el plan histórico previo.
+
+Verificado en software mediante fixtures y regresión protegida. Pendiente físico: fuente/capacidades reales de ESP32-CAM, VGA/QVGA, orientación/luz/HSV/ROI, marcadores impresos y captura de originales reales. Hardware bloquea alimentación, movimiento al encender, FL y brazo. Fases posteriores: CNN, difusa, heurística y máquina autónoma; Iniciar/Pausar siguen deshabilitados. No fusionar esta rama con main en esta entrega.
 
 Fecha: 24/11/2026. Este documento registra alcance futuro; no describe funciones terminadas. La Fase 02.1 conserva la arquitectura, pantalla Automático y firmware. La entrega académica continúa prevista para el 30/11/2026; el calendario no elimina las puertas de seguridad.
 

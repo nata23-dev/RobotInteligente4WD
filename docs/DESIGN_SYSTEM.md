@@ -68,3 +68,11 @@ La señal de salud y el video conservan su ciclo de 80 ms. La telemetría visual
 ## Seguridad visual
 
 Simulación siempre se identifica explícitamente. Los datos de su API no se llaman latencia Wi-Fi. Sin verificación no hay estados verdes de conexión ni posiciones físicas inferidas. Se diferencia autorización local del estado lógico del firmware. Una parada no confirmada se destaca en rojo. Navegar conserva el desarmado y STOP originales; Configuración no cambia de propietario. Iniciar/Pausar autonomía y ráfaga permanecen deshabilitados. `Alt+1..4` cambia de sección; `Esc` solicita STOP. No existen atajos de movimiento repetido.
+## Evolución Fase 03 — 24/11/2026
+
+Conserva paleta/tipografías y cuatro secciones. Automático elimina las métricas y tarjetas IA superiores: visor y contexto se reparten 3:1, con única imagen Original/Procesada/Máscara, máscara seleccionable y Ampliar/Restaurar. La ampliación oculta contexto; STOP GLOBAL permanece en la cabecera y Escape conserva STOP. Ciclo neutral de ocho pasos y controles Iniciar/Pausar deshabilitados permanecen abajo. Diagnóstico/eventos se despliegan bajo demanda; campos CNN/difusa/heurística no inventan resultados.
+
+Video usa ampliación bicúbica/reducción Lanczos, centrado y bandas, caché por generación/ID/tamaño y redibujo al cambiar viewport. Reporta dimensiones recibidas aparte de orientadas. `fixture_prueba` se identifica en badge y fuente. El footer agrega resolución recibida; no estima latencia física de captura.
+
+Visión artificial incorpora controles digitales y orientación, editor HSV por color con límites en cuadrícula, máscara sobre el único stream y consulta de píxel, ROI/seguimiento/overlays. Se desplaza verticalmente sin scroll horizontal. Dataset incorpora diálogos de ráfaga y revisión, ambos con STOP y Escape. Mínimo 1200×650; 1024×768 no soportado por ancho. Se revisaron las cuatro secciones a 1280,1366,1600,1920; las dos mayores solo geométricamente, por monitor físico 1366×768. Capturas y límites en el informe Fase 03.
+

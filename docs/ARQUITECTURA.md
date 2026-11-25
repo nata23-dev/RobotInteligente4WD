@@ -1,5 +1,13 @@
 # Arquitectura de Fase 01
 
+## Extensión vigente — Fase 03
+
+La arquitectura histórica de abajo se conserva. Fase 03 agrega `VisionWorker` y un resultado acotado que contiene Frame, Observation, normalizada, imagen de análisis, máscaras y overlay. La cámara mantiene una única conexión y genera identidad por reconexión. El trabajador procesa el último frame una sola vez por identidad, descarta caducados/generaciones anteriores y carece de acceso al despachador. `ai/perception.py` hace HSV, objetos, seguimiento y ArUco; `ai/transforms.py` separa orientación y ajustes digitales. CNN/difusa/heurística/autonomía no implementadas.
+
+Application compone/cierra percepción junto a cámara y despacho. Ráfagas tienen cancelación independiente y comprueban seguridad durante las esperas y antes de guardar. Un mutex de captura impide dos escrituras simultáneas y rechaza armado de UI durante una captura; no es el bloqueo de Safety y no bloquea STOP ni heartbeat. Al cerrar se solicita STOP inmediatamente si existía conexión/autorización, antes de esperar tareas de imágenes. No se cambió `control/`, HTTPBridge, protocolo, simulador ni firmware.
+
+Dataset conserva CSV original y agrega JSONL v2, derivados sin overlays y split por sesiones. Config schema 2 migra el anterior completo sin reescribir al leer y conserva parámetros de control. Automático es un único visor 3:1 con detalles bajo demanda; calibración HSV comparte stream y ejecuta trabajos acotados fuera de Tk. [Guía y contratos completos](VISION_Y_DATASET_FASE03.md).
+
 ## Componentes y autoridad
 
 `main.py` compone una sola aplicación. `Application` crea un `Dispatcher`, un `Controller`, una `Camera` y un servicio de captura del dataset. Tkinter contiene presentación y callbacks breves. No se usa la interfaz de V7 como base; se recuperaron sus diez patrones y límites validados en código, sin atribuirles validación física actual.
