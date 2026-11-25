@@ -7,6 +7,13 @@ from dataset.capture import SHAPES, COLORS
 
 
 def dataset_summary(root):
+    from dataset.storage import consistent
+
+    with consistent(root):
+        return _dataset_summary(root)
+
+
+def _dataset_summary(root):
     root = Path(root).resolve()
     shapes = dict.fromkeys(SHAPES, 0)
     colors = dict.fromkeys(COLORS, 0)

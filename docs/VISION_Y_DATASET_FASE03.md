@@ -2,6 +2,8 @@
 
 Implementación de software del 24/11/2026. No se contactó hardware. La autonomía continúa bloqueada por alimentación, movimiento inesperado al encender y validaciones físicas pendientes.
 
+**Actualización 03.1-R:** Original y Dataset ahora visualizan directamente Camera fresca, sin depender del trabajador de percepción. La captura en hardware integrado requiere estado remoto explícito desarmado/en reposo y confirmado hace como máximo 0.75 s; desconectarse no habilita capturar. El almacenamiento utiliza journal recuperable para CSV/JSONL/originales/derivados. Ante varios objetos del color etiquetado se omite el recorte y se pide revisión. Herramientas permite persistir aceptación/rechazo/sin revisar; rechazadas fuera del split y no revisadas bloquean `training_ready`. El split agrupa también duplicados exactos de originales/derivados entre sesiones, comprueba archivos y resume clases/colores. Las divisiones se invalidan al cambiar datos/revisiones. Los detalles de la corrección y límites del almacenamiento están en [la validación 03.1-R](VALIDACION_FASE03.md); las descripciones históricas de escrituras separadas o selección por mayor área de abajo quedan sustituidas por esta corrección.
+
 ## Cámara y capacidades
 
 Se revisaron los ZIP del controlador y V7, las referencias extraídas y el sketch Robodacta de Descargas. Ninguno contiene la implementación de la ESP32-CAM (`esp_camera_init`, servidor de stream o controles de sensor). No se recuperó la fuente exacta instalada. El stream y QVGA/10–12 FPS siguen siendo reportes anteriores del operador.

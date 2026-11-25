@@ -1,92 +1,289 @@
-"""Revisión y división por sesiones completas, sin copiar ni aumentar originales."""
+"""Revisión persistente y división reproducible por sesiones y duplicados."""
 
 import csv
+import hashlib
 import json
 from pathlib import Path
 import random
+import cv2
+from dataset.storage import consistent, safe_path, commit
+
+STATES = ("sin_revisar", "aceptada", "rechazada")
 
 
 def originals(root):
     root = Path(root).resolve()
-    path = root / "metadata" / "manifest.csv"
-    if not path.exists():
-        return []
-    found = {}
-    with path.open(encoding="utf-8", newline="") as stream:
-        for row in csv.DictReader(stream):
-            p = (root / row.get("image", "")).resolve()
-            if (
-                row.get("source") != "camara_real"
-                or not p.is_relative_to(root)
-                or not p.is_file()
-            ):
-                continue
-            found.setdefault(row["image"], row)
-    return list(found.values())
+    with consistent(root):
+        path = root / "metadata/manifest.csv"
+        if not path.exists():
+            return []
+        found = {}
+        with path.open(encoding="utf-8", newline="") as stream:
+            for row in csv.DictReader(stream):
+                try:
+                    p = safe_path(root, row.get("image", ""))
+                except ValueError:
+                    continue
+                if row.get("source") == "camara_real" and p.is_file():
+                    found.setdefault(row["image"], row)
+        return list(found.values())
 
 
 def review(root):
-    path = Path(root) / "metadata" / "vision_v2.jsonl"
-    return (
-        [
-            json.loads(line)
-            for line in path.read_text(encoding="utf-8").splitlines()
-            if line.strip()
-        ]
-        if path.exists()
-        else []
-    )
+    root = Path(root)
+    with consistent(root):
+        path = root / "metadata/vision_v2.jsonl"
+        records = (
+            {
+                r["original"]: r
+                for r in (
+                    json.loads(line)
+                    for line in path.read_text(encoding="utf-8").splitlines()
+                    if line.strip()
+                )
+            }
+            if path.exists()
+            else {}
+        )
+        decisions = root / "metadata/reviews.json"
+        states = (
+            json.loads(decisions.read_text(encoding="utf-8"))
+            if decisions.exists()
+            else {}
+        )
+        manifest = root / "metadata/manifest.csv"
+        if manifest.exists():
+            with manifest.open(encoding="utf-8", newline="") as stream:
+                for row in csv.DictReader(stream):
+                    if row.get("source") != "camara_real":
+                        continue
+                    try:
+                        safe_path(root, row["image"])
+                    except ValueError:
+                        continue
+                    records.setdefault(
+                        row["image"],
+                        dict(
+                            row,
+                            original=row["image"],
+                            id=Path(row["image"]).stem,
+                            quality={
+                                "warnings": ["Original anterior sin evaluación v2"]
+                            },
+                            crop=None,
+                            roi=None,
+                        ),
+                    )
+        for name, r in records.items():
+            r["file_exists"] = safe_path(root, name).is_file()
+            r["review"] = states.get(name, {}).get(
+                "state", r.get("review", "sin_revisar")
+            )
+        return list(records.values())
+
+
+def set_review(root, original, state):
+    if state not in STATES:
+        raise ValueError("Revisión: sin_revisar, aceptada o rechazada")
+    root = Path(root)
+    with consistent(root):
+        records = {r["original"]: r for r in review(root)}
+        if original not in records or not safe_path(root, original).is_file():
+            raise ValueError("Original inexistente o no registrado")
+        path = root / "metadata/reviews.json"
+        decisions = (
+            json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        )
+        from datetime import datetime, timezone
+
+        decisions[original] = {
+            "state": state,
+            "updated_utc": datetime.now(timezone.utc).isoformat(),
+        }
+        files = {
+            "metadata/reviews.json": json.dumps(
+                decisions, ensure_ascii=False, indent=2
+            ).encode("utf-8")
+        }
+        if (root / "metadata/split_sessions.json").exists():
+            files["metadata/split_sessions.json"] = json.dumps(
+                {"valid": False, "reason": "Revisión modificada; regenerar división"}
+            ).encode("utf-8")
+        commit(root, files)
+
+
+def image_digest(path):
+    image = cv2.imread(str(path), cv2.IMREAD_UNCHANGED)
+    if image is None:
+        return None
+    return hashlib.sha256(image.tobytes() + str(image.shape).encode()).hexdigest()
 
 
 def split_sessions(root, seed=42):
-    rows = originals(root)
-    sessions = sorted({r["session"] for r in rows})
-    if len(sessions) < 3:
-        raise ValueError(
-            "Se requieren al menos tres sesiones reales independientes; no se dividirán ráfagas"
-        )
-    random.Random(seed).shuffle(sessions)
-    count = len(sessions)
-    ntest = max(1, round(count * 0.15))
-    nval = max(1, round(count * 0.15))
-    assignment = {
-        s: ("test" if i < ntest else "validation" if i < ntest + nval else "train")
-        for i, s in enumerate(sessions)
-    }
-    result = {
-        "schema_version": 1,
-        "seed": seed,
-        "ratios_proposed": [0.70, 0.15, 0.15],
-        "sessions": assignment,
-        "items": [],
-        "warnings": [
-            "Porcentajes aproximados por sesiones; revisar balance de clases y diversidad."
-        ],
-    }
-    derivatives = {r["original"]: r.get("crop") for r in review(root) if r.get("crop")}
-    for row in rows:
-        result["items"].append(
-            {
-                "original": row["image"],
-                "derived": derivatives.get(row["image"]),
-                "session": row["session"],
-                "shape": row["shape"],
-                "subset": assignment[row["session"]],
-            }
-        )
-    # Cada conjunto necesita ejemplos de las tres clases. Rechazar una división
-    # no útil es preferible a repartir frames vecinos para forzar porcentajes.
-    for subset in ("train", "validation", "test"):
-        if {r["shape"] for r in result["items"] if r["subset"] == subset} != {
-            "cubo",
-            "cilindro",
-            "prisma_triangular",
-        }:
+    root = Path(root)
+    with consistent(root):
+        reviews = {r["original"]: r for r in review(root)}
+        manifest = root / "metadata/manifest.csv"
+        if manifest.exists():
+            with manifest.open(encoding="utf-8", newline="") as stream:
+                for row in csv.DictReader(stream):
+                    if (
+                        row.get("source") == "camara_real"
+                        and reviews.get(row["image"], {}).get("review") != "rechazada"
+                        and not safe_path(root, row["image"]).is_file()
+                    ):
+                        raise ValueError("Falta original registrado: " + row["image"])
+        rows = [
+            r for r in originals(root) if reviews[r["image"]]["review"] != "rechazada"
+        ]
+        sessions = sorted({r["session"] for r in rows})
+        if len(sessions) < 3:
             raise ValueError(
-                "Sesiones insuficientes para representar las tres clases en cada conjunto; capture sesiones balanceadas"
+                "Se requieren al menos tres sesiones reales independientes; no se dividirán ráfagas"
             )
-    target = Path(root) / "metadata" / "split_sessions.json"
-    temp = target.with_suffix(".tmp")
-    temp.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
-    temp.replace(target)
-    return result
+        parent = {s: s for s in sessions}
+
+        def find(s):
+            while parent[s] != s:
+                s = parent[s]
+            return s
+
+        hashes, derived = {}, {}
+        warnings = [
+            "Porcentajes aproximados por grupos completos; revisar balance y diversidad."
+        ]
+        for row in rows:
+            name = row["image"]
+            record = reviews[name]
+            digest = image_digest(safe_path(root, name))
+            row["sha256"] = digest
+            if digest:
+                if digest in hashes:
+                    previous = hashes[digest]
+                    if (
+                        previous["shape"] != row["shape"]
+                        or previous["color"] != row["color"]
+                    ):
+                        raise ValueError(
+                            "Duplicado exacto con etiquetas humanas incompatibles; revisar antes de dividir"
+                        )
+                    parent[find(row["session"])] = find(previous["session"])
+                else:
+                    hashes[digest] = row
+            elif record["review"] == "aceptada":
+                raise ValueError("Imagen aceptada no decodificable; revisar archivo")
+            else:
+                warnings.append(
+                    "Archivo legado sin revisar no decodificable: "
+                    + name
+                    + "; división solo de planificación, no apta para entrenar"
+                )
+            cp = record.get("crop")
+            if cp and not safe_path(root, cp).is_file():
+                raise ValueError("Falta archivo derivado: " + cp)
+            if cp:
+                crop_digest = image_digest(safe_path(root, cp))
+                if crop_digest is None:
+                    raise ValueError("Recorte no decodificable: " + cp)
+                if crop_digest in hashes:
+                    previous = hashes[crop_digest]
+                    if (
+                        previous["shape"] != row["shape"]
+                        or previous["color"] != row["color"]
+                    ):
+                        raise ValueError(
+                            "Recorte duplicado con etiquetas incompatibles"
+                        )
+                    parent[find(row["session"])] = find(previous["session"])
+                else:
+                    hashes[crop_digest] = row
+            derived[name] = cp
+        groups = {}
+        for s in sessions:
+            groups.setdefault(find(s), []).append(s)
+        groups = list(groups.values())
+        if len(groups) < 3:
+            raise ValueError(
+                "Duplicados enlazan sesiones: faltan tres grupos independientes para evitar fuga"
+            )
+        rng = random.Random(seed)
+        assignment = None
+        for _ in range(512):
+            candidate = [list(g) for g in groups]
+            rng.shuffle(candidate)
+            ntest = max(1, round(len(candidate) * 0.15))
+            nval = max(1, round(len(candidate) * 0.15))
+            split = {
+                s: (
+                    "test"
+                    if i < ntest
+                    else "validation" if i < ntest + nval else "train"
+                )
+                for i, g in enumerate(candidate)
+                for s in g
+            }
+            if all(
+                {r["shape"] for r in rows if split[r["session"]] == subset}
+                == {"cubo", "cilindro", "prisma_triangular"}
+                for subset in ("train", "validation", "test")
+            ):
+                assignment = split
+                break
+        if assignment is None:
+            raise ValueError(
+                "No se encontró división de sesiones/duplicados con las tres clases en cada conjunto"
+            )
+        items = [
+            dict(
+                original=r["image"],
+                derived=derived[r["image"]],
+                session=r["session"],
+                shape=r["shape"],
+                color=r["color"],
+                subset=assignment[r["session"]],
+                sha256=r["sha256"],
+                review=reviews[r["image"]]["review"],
+                eligible_for_training=reviews[r["image"]]["review"] == "aceptada"
+                and r["sha256"] is not None,
+            )
+            for r in rows
+        ]
+        summary = {}
+        for subset in ("train", "validation", "test"):
+            selected = [r for r in items if r["subset"] == subset]
+            summary[subset] = {
+                "total": len(selected),
+                "shapes": {
+                    k: sum(r["shape"] == k for r in selected)
+                    for k in ("cubo", "cilindro", "prisma_triangular")
+                },
+                "colors": {
+                    k: sum(r["color"] == k for r in selected)
+                    for k in ("rojo", "verde", "azul")
+                },
+            }
+        ready = all(r["eligible_for_training"] for r in items)
+        if not ready:
+            warnings.append(
+                "Hay muestras sin revisar: esta división NO está habilitada para entrenamiento"
+            )
+        result = {
+            "schema_version": 2,
+            "valid": True,
+            "training_ready": ready,
+            "seed": seed,
+            "ratios_proposed": [0.70, 0.15, 0.15],
+            "sessions": assignment,
+            "items": items,
+            "summary": summary,
+            "warnings": warnings,
+        }
+        commit(
+            root,
+            {
+                "metadata/split_sessions.json": json.dumps(
+                    result, ensure_ascii=False, indent=2
+                ).encode("utf-8")
+            },
+        )
+        return result

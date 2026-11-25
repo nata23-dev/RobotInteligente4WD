@@ -8,6 +8,7 @@ from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
 from pathlib import Path
 import queue
 import threading
+import time
 from app.config import ROOT, LOCAL, load, save, validate, integer
 from app.models import Command
 from control.command_dispatcher import Dispatcher
@@ -50,6 +51,7 @@ class Application:
         self.reconfiguring = False
         self.closed = False
         self.close_error = None
+        self.lifecycle_failed = False
         self._compose()
         self.worker = threading.Thread(
             target=self._jobs, name="archivos-y-ciclo", daemon=True
@@ -63,6 +65,7 @@ class Application:
         else:
             bridge, stop_bridge = HTTPBridge(c), HTTPBridge(c)
         self.dispatcher = Dispatcher(bridge, stop_bridge, c)
+        self.dispatcher.capture_gate = self.capture_lock
         self.controller = Controller(self.dispatcher)
         self.camera = Camera(c)
         self.vision = VisionWorker(self.camera, c)
@@ -111,19 +114,17 @@ class Application:
                 self.event("error", str(exc))
 
     def command(self, action, params=None):
-        if self.reconfiguring or self.closing.is_set():
+        if self.reconfiguring or self.closing.is_set() or self.lifecycle_failed:
             self.event("error", "Aplicación cambiando configuración o cerrando")
             return
-        if action == 'arm':
-            if not self.capture_lock.acquire(blocking=False):
-                self.event('error','Espere a que termine la captura antes de armar')
-                return
-            try:
-                future = self.dispatcher.submit(Command(action, params or {}))
-            finally:
-                self.capture_lock.release()
-        else:
-            future = self.dispatcher.submit(Command(action, params or {}))
+        if action == "arm" and self.burst.running:
+            self.burst.cancel.set()
+        if self.capture_lock.locked():
+            self.event(
+                "error", "Espere a que termine la captura antes de enviar órdenes"
+            )
+            return
+        future = self.dispatcher.submit(Command(action, params or {}))
 
         def done(f):
             if f.cancelled():
@@ -138,6 +139,10 @@ class Application:
         future.add_done_callback(done)
 
     def update_config(self, config):
+        if self.lifecycle_failed:
+            raise PermissionError(
+                "Ciclo de vida incompleto; reinicie antes de reconfigurar"
+            )
         new = validate(config)
         with self.dispatcher.safety.lock:
             if self.dispatcher.safety.session or self.dispatcher.state.get("armed"):
@@ -172,14 +177,32 @@ class Application:
                     "Configuración guardada. Conexión y armado explícitos requeridos.",
                 )
             except Exception:
-                if not self.dispatcher.worker.is_alive():
+                threads = (
+                    self.burst.thread,
+                    self.vision.thread,
+                    self.camera.thread,
+                    self.dispatcher.worker,
+                    self.dispatcher.supervisor,
+                    self.dispatcher.stop_thread,
+                )
+                stopped = all(t is None or not t.is_alive() for t in threads)
+                if stopped:
                     self.config = previous
                     self._compose()
+                else:
+                    self.lifecycle_failed = True
+                    self.dispatcher.safety.invalidate(
+                        "Ciclo de vida incompleto; reinicie la aplicación"
+                    )
                 raise
             finally:
                 self.reconfiguring = False
 
-        self.job(apply, internal=True)
+        if not self.job(apply, internal=True):
+            self.reconfiguring = False
+            raise RuntimeError(
+                "No se pudo programar la configuración; vuelva a intentar"
+            )
 
     def capture(self, shape, color, session):
         camera = self.camera
@@ -188,9 +211,31 @@ class Application:
         )
 
     def capture_guard(self):
-        if self.closing.is_set() or self.reconfiguring:
+        if self.closing.is_set() or self.reconfiguring or self.lifecycle_failed:
             raise PermissionError("Captura cancelada por cierre o reconfiguración")
-        state = self.dispatcher.state
+        if not self.config["simulation"]:
+            with self.dispatcher.safety.lock:
+                state = self.dispatcher.state
+                age = time.monotonic() - self.dispatcher.state_confirmed_at
+                if (
+                    not self.dispatcher.safety.connected
+                    or not 0 <= age <= 0.75
+                    or not isinstance(state, dict)
+                    or any(
+                        state.get(k) is not False
+                        for k in (
+                            "armed",
+                            "motor_activo",
+                            "brazo_ocupado",
+                            "maintenance",
+                        )
+                    )
+                ):
+                    self.burst.cancel.set()
+                    raise PermissionError(
+                        "Hardware integrado: confirme estado remoto reciente, desarmado y en reposo; desconexión no confirma seguridad"
+                    )
+        state = self.dispatcher.state or {}
         if (
             state.get("armed")
             or state.get("motor_activo")
@@ -199,19 +244,20 @@ class Application:
             or self.dispatcher.active
             or not self.dispatcher.queue.empty()
         ):
+            self.burst.cancel.set()
             raise PermissionError(
                 "Capturar con el robot desarmado y actuadores en reposo"
             )
 
     def _capture_now(self, shape, color, session, frame=None, expected_camera=None):
         if not self.capture_lock.acquire(blocking=False):
-            raise RuntimeError('Ya hay una captura en curso')
+            raise RuntimeError("Ya hay una captura en curso")
         try:
-            return self._write_capture(shape,color,session,frame,expected_camera)
+            return self._write_capture(shape, color, session, frame, expected_camera)
         finally:
             self.capture_lock.release()
 
-    def _write_capture(self,shape,color,session,frame,expected_camera):
+    def _write_capture(self, shape, color, session, frame, expected_camera):
         if expected_camera is not None and expected_camera is not self.camera:
             raise ValueError("La cámara cambió")
         self.capture_guard()
@@ -221,8 +267,25 @@ class Application:
         frame = frame or snap["frame"]
         if frame.generation != snap["frame"].generation:
             raise ValueError("La sesión de cámara cambió")
+        camera = self.camera
+        is_burst = (
+            self.burst.running and threading.current_thread() is self.burst.thread
+        )
+
+        def guard():
+            self.capture_guard()
+            current = camera.snapshot()
+            if (
+                camera is not self.camera
+                or not current["fresh"]
+                or current["frame"].generation != frame.generation
+            ):
+                raise PermissionError("Captura cancelada: cámara perdida o sustituida")
+            if is_burst and self.burst.cancel.is_set():
+                raise InterruptedError("Ráfaga cancelada durante almacenamiento")
+
         path, record = self.dataset.save_record(
-            frame, shape, color, session, self.config, self.capture_guard
+            frame, shape, color, session, self.config, guard
         )
         self.event("quality", record["quality"])
         self.event("capture", (path, self.dataset.counts()))
@@ -304,7 +367,7 @@ class Application:
             return
         self.closing.set()
         if self.dispatcher.safety.connected or self.dispatcher.safety.session:
-            self.dispatcher.stop('Cierre de aplicación')
+            self.dispatcher.stop("Cierre de aplicación")
         self.burst.cancel.set()
         try:
             with self.operation_lock:

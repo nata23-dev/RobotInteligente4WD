@@ -232,6 +232,9 @@ class MainWindow(tk.Tk):
             if kind == "dataset_review":
                 self.dataset.show_review(payload)
                 continue
+            if kind == "dataset_split":
+                self.dataset.show_split(payload)
+                continue
             if kind == "ui_goal":
                 self.dataset.apply_goal(payload)
                 continue
@@ -314,6 +317,10 @@ class MainWindow(tk.Tk):
             and not d.state.get("motor_activo")
             and not d.state.get("brazo_ocupado")
         )
+        try:
+            self.app.capture_guard()
+        except PermissionError:
+            can_capture = False
         self.dataset.capture_button.state(
             ["!disabled"] if can_capture else ["disabled"]
         )
@@ -324,7 +331,11 @@ class MainWindow(tk.Tk):
         )
         self.dataset.check_burst_labels()
         fps = f'{cam["frame"].fps:.1f}' if cam["fresh"] else "—"
-        resolution = f'{cam["frame"].image.shape[1]}×{cam["frame"].image.shape[0]}' if cam['fresh'] else '—'
+        resolution = (
+            f'{cam["frame"].image.shape[1]}×{cam["frame"].image.shape[0]}'
+            if cam["fresh"]
+            else "—"
+        )
         p95 = "—" if metrics["p95"] is None else f'{metrics["p95"]:.1f}'
         firmware_state = (
             "—"

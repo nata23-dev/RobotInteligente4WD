@@ -199,25 +199,17 @@ class DatasetTab(ttk.Frame):
         self.request_summary()
 
     def update_video(self, snap):
-        r = self.app.vision.snapshot()["result"]
-        if r and snap["fresh"]:
-            import time
+        from ui.video_source import original_snapshot
 
-            frame = Frame(
-                r.frame.id,
-                r.frame.received_at,
-                r.normalized,
-                r.frame.fps,
-                r.frame.generation,
-                r.frame.source,
+        view = original_snapshot(self.app, snap)
+        self.video.update_frame(view)
+        if view["fresh"]:
+            frame = view["frame"]
+            h, w = snap["frame"].image.shape[:2]
+            set_value(
+                self.video.metrics,
+                f"Recibida {w} × {h} · Vista {frame.image.shape[1]} × {frame.image.shape[0]} · {frame.fps:.1f} FPS · {frame.source}",
             )
-            self.video.update_frame(
-                dict(snap, frame=frame, age_s=time.monotonic() - frame.received_at)
-            )
-            h,w=r.frame.image.shape[:2]
-            set_value(self.video.metrics,f'Recibida {w} × {h} · Vista {frame.image.shape[1]} × {frame.image.shape[0]} · {frame.fps:.1f} FPS · {frame.source}')
-        else:
-            self.video.update_frame(dict(snap, frame=None, fresh=False))
 
     def dialog(self, title):
         dialog = tk.Toplevel(self)
@@ -332,6 +324,7 @@ class DatasetTab(ttk.Frame):
 
             def task():
                 result = split_sessions(root)
+                self.app.event("dataset_split", result)
                 self.app.event(
                     "info",
                     f'División guardada por {len(result["sessions"])} sesiones en metadata/split_sessions.json',
@@ -341,6 +334,43 @@ class DatasetTab(ttk.Frame):
 
         button(row, "Revisar calidad y recortes", review).pack(side="left", padx=(0, 8))
         button(row, "Preparar división 70/15/15", split).pack(side="left")
+        self.review_selection = tk.StringVar()
+        self.review_choice = ttk.Combobox(
+            body, textvariable=self.review_selection, state="readonly"
+        )
+        self.review_choice.pack(fill="x", pady=(8, 4))
+        decisions = ttk.Frame(body)
+        decisions.pack(fill="x")
+
+        def decide(state):
+            from dataset.tools import set_review
+
+            root = self.app.dataset.root
+            name = self.review_selection.get()
+
+            def task():
+                set_review(root, name, state)
+                from dataset.tools import review as read_review
+
+                self.app.event("dataset_review", read_review(root))
+                self.app.event(
+                    "info",
+                    "Revisión guardada: " + state + "; regenerar división si existía",
+                )
+
+            self.app.job(task)
+
+        for state, title in [
+            ("aceptada", "Aceptar"),
+            ("rechazada", "Rechazar"),
+            ("sin_revisar", "Sin revisar"),
+        ]:
+            button(
+                decisions,
+                title,
+                lambda state=state: decide(state),
+                style="Compact.TButton",
+            ).pack(side="left", padx=(0, 8))
         self.review_text = tk.Text(body, wrap="word", font=("Consolas", 9), height=16)
         self.review_text.pack(fill="both", expand=True, pady=8)
         review()
@@ -349,6 +379,10 @@ class DatasetTab(ttk.Frame):
         widget = getattr(self, "review_text", None)
         if widget is None or not widget.winfo_exists():
             return
+        names = [r["original"] for r in rows]
+        self.review_choice.configure(values=names)
+        if self.review_selection.get() not in names:
+            self.review_selection.set(names[0] if names else "")
         widget.delete("1.0", "end")
         for r in rows:
             widget.insert(
@@ -362,3 +396,19 @@ class DatasetTab(ttk.Frame):
                 "end",
                 "No hay registros de calidad. Los originales anteriores siguen en el manifiesto CSV.",
             )
+
+    def show_split(self, result):
+        widget = getattr(self, "review_text", None)
+        if widget is None or not widget.winfo_exists():
+            return
+        widget.delete("1.0", "end")
+        widget.insert(
+            "end",
+            f'División por sesiones · semilla {result["seed"]}\nHabilitada para entrenamiento: {result["training_ready"]}\n\n',
+        )
+        for subset, summary in result["summary"].items():
+            widget.insert(
+                "end",
+                f'{subset}: {summary["total"]} originales\nFormas: {summary["shapes"]}\nColores: {summary["colors"]}\n\n',
+            )
+        widget.insert("end", "\n".join(result["warnings"]))

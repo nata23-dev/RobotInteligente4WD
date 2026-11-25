@@ -29,6 +29,9 @@ class Dispatcher:
         self.last_poll = 0.
         self.response_ms = None
         self.active = False
+        # Exclusión de admisión de órdenes y almacenamiento; STOP nunca la usa.
+        self.capture_gate = threading.Lock()
+        self.state_confirmed_at = 0.
 
     def start(self):
         self.worker.start()
@@ -36,6 +39,15 @@ class Dispatcher:
 
     def submit(self, command):
         future = Future()
+        if not self.capture_gate.acquire(blocking=False):
+            future.set_exception(PermissionError('Orden descartada durante captura'))
+            return future
+        try:
+            return self._submit(command, future)
+        finally:
+            self.capture_gate.release()
+
+    def _submit(self, command, future):
         with self.safety.lock:
             if self.closed.is_set():
                 future.set_exception(RuntimeError('Despachador cerrado'))
@@ -85,6 +97,7 @@ class Dispatcher:
                     if generation != self.safety.generation:
                         continue
                     self.state = state
+                    self.state_confirmed_at = time.monotonic()
                     self.safety.status = 'Parada confirmada (estado lógico)' if confirmed else 'Parada no confirmada'
                     break
         except (APIError, ValueError):
@@ -97,6 +110,7 @@ class Dispatcher:
         state = validate_state(self.bridge.request('state'))
         with self.safety.lock:
             self.state = state
+            self.state_confirmed_at = time.monotonic()
             if self.safety.session and not state['armed']:
                 self.safety.invalidate('Sesión perdida / requiere rearme explícito')
                 self._cancel()
@@ -194,6 +208,9 @@ class Dispatcher:
                     continue
                 if not future.set_running_or_notify_cancel():
                     continue
+                if not self.capture_gate.acquire(blocking=False):
+                    future.set_exception(PermissionError('Orden descartada durante captura'))
+                    continue
                 self.active = True
                 try:
                     if gen != self.safety.generation:
@@ -210,6 +227,7 @@ class Dispatcher:
                     future.set_exception(exc)
                 finally:
                     self.active = False
+                    self.capture_gate.release()
             except (APIError, ValueError) as exc:
                 self._failure(exc)
             except Exception:

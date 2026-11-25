@@ -136,10 +136,25 @@ class AutomaticTab(ttk.Frame):
         self.expand_button.configure(text="Restaurar" if self.expanded else "Ampliar")
 
     def update_video(self, snap):
+        from ui.video_source import original_snapshot
+
         v = self.app.vision.snapshot()
         r = v["result"]
+        mode = self.view.get()
+        if mode == "Original":
+            view = original_snapshot(self.app, snap)
+            self.video.processed = False
+            self.video.update_frame(view)
+            if snap["fresh"]:
+                f = snap["frame"]
+                image = view["frame"].image
+                set_value(
+                    self.video.metrics,
+                    f"Recibida {f.image.shape[1]} × {f.image.shape[0]} · Vista {image.shape[1]} × {image.shape[0]} · {f.fps:.1f} FPS · #{f.id} · {f.source}",
+                )
         if r is None:
-            self.video.update_frame(dict(snap, frame=None, fresh=False))
+            if mode != "Original":
+                self.video.update_frame(dict(snap, frame=None, fresh=False))
             set_value(
                 self.context,
                 "Sin observación vigente\n\nDestino sin determinar\nAcción: ninguna\nClasificadas: sin contador",
@@ -165,20 +180,22 @@ class AutomaticTab(ttk.Frame):
             r.frame.source,
         )
         self.video.processed = False
-        self.video.update_frame(
-            dict(
-                snap,
-                frame=f,
-                fresh=True,
-                age_s=time.monotonic() - f.received_at,
-                status=f.source,
+        if mode != "Original":
+            self.video.update_frame(
+                dict(
+                    snap,
+                    frame=f,
+                    fresh=True,
+                    age_s=time.monotonic() - f.received_at,
+                    status=f.source,
+                )
             )
-        )
         h, w = r.frame.image.shape[:2]
-        set_value(
-            self.video.metrics,
-            f"Recibida {w} × {h} · Vista {image.shape[1]} × {image.shape[0]} · {f.fps:.1f} FPS · #{f.id} · {f.source}",
-        )
+        if mode != "Original":
+            set_value(
+                self.video.metrics,
+                f"Recibida {w} × {h} · Vista {image.shape[1]} × {image.shape[0]} · {f.fps:.1f} FPS · #{f.id} · {f.source}",
+            )
         target = o.target
         set_value(
             self.context,
