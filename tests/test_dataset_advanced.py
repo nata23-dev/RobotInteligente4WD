@@ -153,6 +153,32 @@ class AdvancedDatasetTests(unittest.TestCase):
             app.close()
         self.assertFalse(app.vision.thread.is_alive())
 
+    def test_capture_mutex_rejects_arm_without_blocking_stop(self):
+        with patch('app.application.load',return_value=defaults()):app=Application(True)
+        try:
+            app.capture_lock.acquire()
+            app.command('arm')
+            self.assertEqual(app.dispatcher.bridge.history,[])
+            # STOP no adquiere el mutex de captura ni espera a la codificación.
+            started=time.monotonic();app.dispatcher.stop()
+            self.assertLess(time.monotonic()-started,.2)
+            self.assertFalse(app.dispatcher.safety.session)
+        finally:
+            app.capture_lock.release();app.close()
+
+    def test_burst_loss_staleness_generation_and_cancel(self):
+        for mode in ('loss','stale','generation'):
+            events=[];saved=[];active=[False]
+            def snap():
+                f=fixture()
+                if active[0] and mode=='generation':f=Frame(f.id,f.received_at,f.image,12,'different','fixture_prueba')
+                return {'fresh':not active[0] or mode=='generation','frame':f}
+            def capture(*args):saved.append(1);active[0]=True
+            b=Burst(snap,capture,lambda:None,lambda *e:events.append(e))
+            b.start('cubo','rojo','s',3,.2);until(lambda:not b.running)
+            self.assertEqual(len(saved),1,mode)
+            self.assertNotEqual(events[-1][1]['reason'],'Completada')
+
     def test_split_sessions_whole_and_insufficient(self):
         with tempfile.TemporaryDirectory() as d:
             root = Path(d)

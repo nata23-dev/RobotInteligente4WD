@@ -4,3 +4,4 @@
 *.bat text eol=crlf
 firmware/** -text
 ESTADO_PROYECTO_ROBOT_INTELIGENTE.md -text
+*.pdf binary

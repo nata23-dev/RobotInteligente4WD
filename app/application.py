@@ -89,11 +89,13 @@ class Application:
     def job(self, fn, internal=False):
         if self.closing.is_set() or (self.reconfiguring and not internal):
             self.event("info", "Tarea descartada durante cierre o configuración")
-            return
+            return False
         try:
             self.jobs.put_nowait(fn)
+            return True
         except queue.Full:
             self.event("error", "Hay demasiadas tareas pendientes")
+            return False
 
     def _jobs(self):
         while not self.closing.is_set():

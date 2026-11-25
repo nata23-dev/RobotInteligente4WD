@@ -212,7 +212,8 @@ class VisionPanel:
             finally:
                 self.pending = False
 
-        self.app.job(task)
+        if not self.app.job(task):
+            self.pending=False
 
     def apply_preview(self, payload):
         camera, result, color = payload
