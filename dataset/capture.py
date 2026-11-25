@@ -12,7 +12,9 @@ import cv2
 from dataset.storage import commit, consistent, root_lock
 
 SHAPES = ("cubo", "cilindro", "prisma_triangular")
+CAPTURE_SHAPES = SHAPES + ("no_objetivo",)
 COLORS = ("rojo", "verde", "azul")
+CAPTURE_COLORS = COLORS + ("sin_color",)
 FIELDS = (
     "image",
     "shape",
@@ -36,7 +38,9 @@ class DatasetCapture:
             pass
 
     def _validate(self, frame, shape, color, session, max_age, source):
-        if shape not in SHAPES or color not in COLORS:
+        if shape not in CAPTURE_SHAPES or color not in (
+            CAPTURE_COLORS if shape == "no_objetivo" else COLORS
+        ):
             raise ValueError("Forma o color inválidos")
         if not re.fullmatch(r"[A-Za-z0-9_-]{1,64}", session):
             raise ValueError("Sesión: 1–64 letras ASCII, números, guion o guion bajo")
@@ -96,7 +100,9 @@ class DatasetCapture:
                 }
             ).encode("utf-8")
 
-    def save_record(self, frame, shape, color, session, config, guard=lambda: None):
+    def save_record(
+        self, frame, shape, color, session, config, guard=lambda: None, metadata=None
+    ):
         from ai.perception import Perception
         from ai.transforms import crop_bounds
         from dataset.quality import measure
@@ -134,9 +140,24 @@ class DatasetCapture:
                 "review": "sin_revisar",
                 "crop": None,
                 "roi": None,
+                "capture_context": validate_context(metadata or {}),
+                "profile_name": config["vision"]["profile_name"],
+                "negative_kind": (
+                    (
+                        "candidato_coloreado"
+                        if result.observation.objects
+                        else "fotografia_sin_candidato"
+                    )
+                    if shape == "no_objetivo"
+                    else None
+                ),
             }
             files = {name: self._png(frame.image)}
-            candidates = [o for o in result.observation.objects if o.color == color]
+            candidates = [
+                o
+                for o in result.observation.objects
+                if o.color == color or (shape == "no_objetivo" and color == "sin_color")
+            ]
             if len(candidates) == 1:
                 target = candidates[0]
                 x1, y1, x2, y2 = crop_bounds(
@@ -198,3 +219,16 @@ class DatasetCapture:
             if row.get("shape") in result:
                 result[row["shape"]] += 1
         return result
+
+
+def validate_context(metadata):
+    if not isinstance(metadata, dict) or set(metadata) - {
+        "distance",
+        "perspective",
+        "lighting",
+        "shade",
+    }:
+        raise ValueError("Metadatos de captura inválidos")
+    if any(not isinstance(v, str) or len(v) > 200 for v in metadata.values()):
+        raise ValueError("Metadatos: texto de hasta 200 caracteres")
+    return dict(metadata)

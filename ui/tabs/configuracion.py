@@ -366,11 +366,17 @@ class ConfigTab(ttk.Frame):
         self.loading = True
         for path, var in self.fields.items():
             value = config
-            for key in path.split("."):
-                value = value[int(key) if isinstance(value, list) else key]
+            try:
+                for key in path.split("."):
+                    value = value[int(key) if isinstance(value, list) else key]
+            except (KeyError, IndexError):
+                self.form_widgets[path].state(["disabled"])
+                continue
+            self.form_widgets[path].state(["!disabled"])
             var.set(value)
         self.show_pattern()
         self.loading = False
+        self.vision_panel.sync_orientation()
 
     def show_pattern(self):
         self.loading = True
@@ -393,6 +399,12 @@ class ConfigTab(ttk.Frame):
     def read(self):
         config = copy.deepcopy(self.draft)
         for path, var in self.fields.items():
+            probe = config
+            try:
+                for key in path.split("."):
+                    probe = probe[int(key) if isinstance(probe, list) else key]
+            except (KeyError, IndexError):
+                continue
             try:
                 value = self.types[path](var.get())
             except (ValueError, tk.TclError) as exc:

@@ -235,6 +235,9 @@ class MainWindow(tk.Tk):
             if kind == "dataset_review":
                 self.dataset.show_review(payload)
                 continue
+            if kind == "vision_configured":
+                self.config_tab.populate(self.app.config)
+                self.dataset.request_summary()
             if kind == "dataset_split":
                 self.dataset.show_split(payload)
                 continue

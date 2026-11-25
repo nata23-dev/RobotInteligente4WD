@@ -2,6 +2,7 @@
 
 import queue
 import threading
+from dataclasses import replace
 import time
 from collections import deque
 from typing import Protocol
@@ -42,6 +43,16 @@ class VisionWorker:
         self.errors = 0
         self.times = deque(maxlen=300)
         self.completed = deque(maxlen=120)
+        self.revision = 0
+        self.pending_profile = None
+
+    def reconfigure(self, profile):
+        import copy
+
+        with self.lock:
+            self.pending_profile = copy.deepcopy(profile)
+            self.revision += 1
+            self.latest = None
 
     def start(self):
         if self.thread and self.thread.is_alive():
@@ -62,6 +73,15 @@ class VisionWorker:
     def _run(self):
         previous = None
         while not self.cancel.wait(0.01):
+            with self.lock:
+                profile = self.pending_profile
+                self.pending_profile = None
+                revision = self.revision
+            if profile is not None:
+                from ai.perception import Perception
+
+                self.processor = Perception(profile)
+                previous = None
             snap = self.camera.snapshot()
             frame = snap["frame"]
             if not snap["fresh"]:
@@ -74,6 +94,10 @@ class VisionWorker:
             previous = identity
             try:
                 result = self.processor.process(frame)
+                result = replace(
+                    result,
+                    observation=replace(result.observation, vision_revision=revision),
+                )
                 current = self.camera.snapshot()
                 # Puede publicarse un frame ligeramente anterior al último, pero su
                 # imagen y overlays siempre viajan juntos y deben continuar frescos.
@@ -86,6 +110,8 @@ class VisionWorker:
                 ):
                     continue
                 with self.lock:
+                    if revision != self.revision:
+                        continue
                     self.latest = result
                     self.times.append(result.observation.processing_ms)
                     self.completed.append(time.monotonic())

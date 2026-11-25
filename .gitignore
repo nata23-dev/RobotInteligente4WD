@@ -6,6 +6,7 @@ referencias_locales/
 *.zip
 config.local.json
 ui.local.json
+vision_profiles.local.json
 config.local.*
 __pycache__/
 *.py[cod]

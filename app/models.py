@@ -33,6 +33,11 @@ class Observation:
     markers: tuple = ()
     target: Any = None
     tracking_state: str = "Sin objetivo"
+    track_id: int | None = None
+    predicted_class: str | None = None
+    classification_state: str = "sin_modelo"
+    destination: str | None = None
+    vision_revision: int = 0
 
 
 @dataclass(frozen=True)

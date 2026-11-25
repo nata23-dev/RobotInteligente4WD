@@ -176,7 +176,7 @@ class AutomaticTab(ttk.Frame):
             r.frame.received_at,
             image,
             r.frame.fps,
-            r.frame.generation + mode + self.mask.get(),
+            r.frame.generation + mode + self.mask.get() + str(o.vision_revision),
             r.frame.source,
         )
         self.video.processed = False
@@ -199,7 +199,7 @@ class AutomaticTab(ttk.Frame):
         target = o.target
         set_value(
             self.context,
-            f'{o.tracking_state}\n\nColor: {target.color if target else "sin objetivo"}\nForma: sin modelo CNN\nDestino: sin determinar\nAcción: ninguna\nDecisión: solo observación\nClasificadas: sin contador',
+            f'{o.tracking_state}\n\n{target.color.capitalize()+" — figura pendiente de clasificación CNN" if target else "Sin objetivo confirmado"}\nSeguimiento: {o.track_id or "sin ID"}\nDestino: sin determinar\nAcción: ninguna\nClasificadas: sin contador',
         )
         self.context_label.configure(wraplength=max(100, self.side.winfo_width() - 28))
 

@@ -32,6 +32,31 @@ class VisionPanel:
                 ("vision.flip_vertical", "Inversión vertical", bool),
             ],
         )
+        self.orientation_labels = {
+            "Original (0°)": 0,
+            "90° izquierda": 270,
+            "90° derecha": 90,
+            "180°": 180,
+        }
+        self.orientation = tk.StringVar()
+        old = tab.form_widgets["vision.rotation"]
+        old.grid_remove()
+        combo = ttk.Combobox(
+            old.master,
+            textvariable=self.orientation,
+            values=list(self.orientation_labels),
+            state="readonly",
+        )
+        combo.grid(row=0, column=1, sticky="ew", pady=5)
+        combo.bind(
+            "<<ComboboxSelected>>",
+            lambda e: tab.fields["vision.rotation"].set(
+                str(self.orientation_labels[self.orientation.get()])
+            ),
+        )
+        button(
+            p, "Calibrador de colores…", self.open_calibrator, style="Primary.TButton"
+        ).pack(anchor="w", pady=8)
         p = tab.section(
             "Visión artificial",
             "Ajustes digitales locales · no aumentan resolución",
@@ -185,6 +210,12 @@ class VisionPanel:
         )
 
     def reset(self, section):
+        if section == "hsv":
+            config = self.tab.read()
+            config["vision"]["hsv"] = defaults()["vision"]["hsv"]
+            config["vision"]["interval_meta"] = defaults()["vision"]["interval_meta"]
+            self.tab.populate(config)
+            return
         profile = defaults()["vision"][section]
         for path, var in self.tab.fields.items():
             prefix = "vision." + section + "."
@@ -213,7 +244,7 @@ class VisionPanel:
                 self.pending = False
 
         if not self.app.job(task):
-            self.pending=False
+            self.pending = False
 
     def apply_preview(self, payload):
         camera, result, color = payload
@@ -272,3 +303,27 @@ class VisionPanel:
             self.sample,
             f"({x},{y}) BGR={r.processing[y,x].tolist()} HSV={hsv.tolist()} · Frame {r.frame.id}",
         )
+
+    def sync_orientation(self):
+        value = int(self.tab.fields["vision.rotation"].get())
+        self.orientation.set(
+            next(
+                (
+                    label
+                    for label, degree in self.orientation_labels.items()
+                    if degree == value
+                ),
+                "Original (0°)",
+            )
+        )
+
+    def open_calibrator(self):
+        if (
+            getattr(self, "calibrator", None) is not None
+            and self.calibrator.window.winfo_exists()
+        ):
+            self.calibrator.window.lift()
+            return
+        from ui.color_calibrator import Calibrator
+
+        self.calibrator = Calibrator(self.tab, self.app)

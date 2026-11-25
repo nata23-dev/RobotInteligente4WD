@@ -1,5 +1,8 @@
 # Robot Inteligente — Estado, decisiones y plan maestro
 
+**Actualización vigente: Fase 03.4-R, 25/11/2026.** Base revisada `7c15829`, rama `feat/fase-03-vision`. Calibración HSV/ROI/filtros/seguimiento, dataset no destructivo y objetivo local de base implementados. 184 pruebas aprobadas, incluidas las 141 previas sin editar. Orientación privada 0→270° horario (90° izquierda), ajustes digitales y comunicaciones preservados. Inventario antes/después: 26 originales y 7 derivados, 37 archivos con hashes idénticos y respaldo verificado. El operador reporta comunicación estable, video correcto, movimientos ensayados y ambos servos funcionales; no se reprodujo hardware en esta entrega. Falta calibrar físicamente colores/filtros/sentido de base. CNN, lógica difusa, heurística ejecutable y autonomía pendientes. [Validación y continuidad](docs/VALIDACION_FASE03_4R.md); [HSV](docs/CALIBRACION_HSV.md); [dataset](docs/GUIA_DATASET.md); [manual](docs/CONTROL_MANUAL_BRAZO.md). Los apartados siguientes conservan su contexto histórico y no revocan esta actualización.
+
+
 **Versión:** 1.3 | **Actualizado:** 2026-11-24 | **Entrega:** 2026-11-30
 **Proyecto provisional:** Robot móvil inteligente para la detección, recolección y clasificación de figuras geométricas.
 **Asignatura:** Inteligencia Artificial. **Zona horaria:** México centro.

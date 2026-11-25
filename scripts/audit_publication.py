@@ -40,6 +40,7 @@ def private_path(name):
     if path.name in (
         "config.local.json",
         "ui.local.json",
+        "vision_profiles.local.json",
         "secrets.h",
         "arduino_secrets.h",
     ):

@@ -21,6 +21,33 @@ def defaults():
             "verde": [[35, 70, 50, 85, 255, 255]],
             "azul": [[90, 80, 50, 135, 255, 255]],
         },
+        "interval_meta": {
+            "rojo": [
+                {"name": "Rojo bajo", "enabled": True},
+                {"name": "Rojo alto", "enabled": True},
+            ],
+            "verde": [{"name": "Verde original", "enabled": True}],
+            "azul": [{"name": "Azul original", "enabled": True}],
+        },
+        "search_roi": {"enabled": False, "rect": [0.0, 0.0, 1.0, 1.0]},
+        "filters": {
+            "min_width": 1,
+            "min_height": 1,
+            "min_area_ratio": 0.0,
+            "aspect_min": 0.05,
+            "aspect_max": 20.0,
+            "solidity_min": 0.0,
+            "extent_min": 0.0,
+            "fill_min": 0.0,
+            "reject_border": False,
+        },
+        "tracking": {
+            "confirm_frames": 1,
+            "size_ratio_max": 3.0,
+            "smoothing": 0.5,
+            "max_gap_s": 0.8,
+        },
+        "profile_name": "Original",
         "open_kernel": 3,
         "close_kernel": 5,
         "min_area": 80,
@@ -35,6 +62,9 @@ def defaults():
             "axis": True,
             "roi": True,
             "markers": True,
+            "search": True,
+            "discarded": False,
+            "regions": False,
         },
     }
 
@@ -86,7 +116,7 @@ def validate(v, d):
         number(v["digital"][k], lo, hi, k)
     keys(v["hsv"], defaults()["hsv"], "HSV")
     for color, ranges in v["hsv"].items():
-        if not isinstance(ranges, list) or len(ranges) != (2 if color == "rojo" else 1):
+        if not isinstance(ranges, list) or not 1 <= len(ranges) <= 16:
             raise ValueError("Intervalos HSV inválidos")
         for r in ranges:
             if not isinstance(r, list) or len(r) != 6:
@@ -95,6 +125,52 @@ def validate(v, d):
                 number(n, 0, 179 if i % 3 == 0 else 255, "HSV", True)
             if any(r[i] > r[i + 3] for i in range(3)):
                 raise ValueError("HSV: mínimo mayor que máximo")
+    keys(v["interval_meta"], v["hsv"], "Metadatos HSV")
+    for color, meta in v["interval_meta"].items():
+        if not isinstance(meta, list) or len(meta) != len(v["hsv"][color]):
+            raise ValueError("Metadatos e intervalos HSV no coinciden")
+        for m in meta:
+            keys(m, {"name", "enabled"}, "Tonalidad")
+            if (
+                not isinstance(m["name"], str)
+                or not 1 <= len(m["name"].strip()) <= 64
+                or type(m["enabled"]) is not bool
+            ):
+                raise ValueError("Nombre o habilitación de tonalidad inválidos")
+    if (
+        not isinstance(v["profile_name"], str)
+        or not 1 <= len(v["profile_name"].strip()) <= 64
+    ):
+        raise ValueError("Nombre de perfil inválido")
+    keys(v["search_roi"], {"enabled", "rect"}, "Región de búsqueda")
+    if type(v["search_roi"]["enabled"]) is not bool:
+        raise ValueError("Búsqueda: booleano requerido")
+    check_roi(v["search_roi"]["rect"])
+    keys(v["filters"], defaults()["filters"], "Filtros")
+    for k, lo, hi, integer in [
+        ("min_width", 1, 4096, True),
+        ("min_height", 1, 4096, True),
+        ("min_area_ratio", 0, 1, False),
+        ("aspect_min", 0.01, 100, False),
+        ("aspect_max", 0.01, 100, False),
+        ("solidity_min", 0, 1, False),
+        ("extent_min", 0, 1, False),
+        ("fill_min", 0, 1, False),
+    ]:
+        number(v["filters"][k], lo, hi, k, integer)
+    if (
+        v["filters"]["aspect_min"] > v["filters"]["aspect_max"]
+        or type(v["filters"]["reject_border"]) is not bool
+    ):
+        raise ValueError("Filtros incompatibles")
+    keys(v["tracking"], defaults()["tracking"], "Seguimiento")
+    for k, lo, hi, i in [
+        ("confirm_frames", 1, 15, True),
+        ("size_ratio_max", 1, 10, False),
+        ("smoothing", 0.05, 1, False),
+        ("max_gap_s", 0.1, 5, False),
+    ]:
+        number(v["tracking"][k], lo, hi, k, i)
     for k in ("open_kernel", "close_kernel"):
         number(v[k], 1, 15, k, True)
         if v[k] % 2 == 0:
@@ -140,4 +216,32 @@ def migrate(config):
         c.update(
             schema_version=2, vision=defaults(), dataset_options=dataset_defaults()
         )
+    if c.get("schema_version") == 2 and isinstance(c.get("vision"), dict):
+        v = c["vision"]
+        base = defaults()
+        added = {"interval_meta", "search_roi", "filters", "tracking", "profile_name"}
+        # Solo admitir el schema anterior completo, no reparar configuraciones rotas.
+        if set(v) not in (set(base), set(base) - added):
+            return c
+        if not isinstance(v.get("overlays"), dict):
+            return c
+        for k in added:
+            v.setdefault(k, copy.deepcopy(base[k]))
+        for k in ("search", "discarded", "regions"):
+            v["overlays"].setdefault(k, base["overlays"][k])
+        c["schema_version"] = 3
     return c
+
+
+def check_roi(roi):
+    if not isinstance(roi, list) or len(roi) != 4:
+        raise ValueError("ROI: x,y,ancho,alto")
+    for n in roi:
+        number(n, 0, 1, "ROI")
+    if (
+        roi[2] <= 0
+        or roi[3] <= 0
+        or roi[0] + roi[2] > 1.00000001
+        or roi[1] + roi[3] > 1.00000001
+    ):
+        raise ValueError("ROI fuera de imagen")

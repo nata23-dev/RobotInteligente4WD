@@ -109,12 +109,14 @@ class ManualTab(ttk.Frame):
         self.servo_status = {}
         self.servo_limits = {}
         self.angle_inputs = {}
+        self.draft_valid = {"garra": False, "base": False}
+        self.target_context = None
         for name, title in [
             ("garra", "Garra · GPIO21"),
             ("base", "Base horizontal · GPIO18"),
         ]:
             servo = ttk.Frame(arm.body, style="Surface.TFrame")
-            servo.pack(fill="x", pady=(0, 8))
+            servo.pack(fill="x", pady=(0, 3))
             heading = ttk.Frame(servo, style="Surface.TFrame")
             heading.pack(fill="x")
             label(heading, title, font=("Segoe UI", 11, "bold")).pack(side="left")
@@ -134,6 +136,13 @@ class ManualTab(ttk.Frame):
             self.angles[name] = tk.StringVar(
                 value=str(app.config["servos"][name]["home"])
             )
+            self.angles[name].trace_add(
+                "write", lambda *_, name=name: self.draft_valid.__setitem__(name, True)
+            )
+            if name == "base":
+                button(
+                    heading, "Objetivo…", self.base_dialog, style="Compact.TButton"
+                ).pack(side="right", padx=4)
             limits = app.config["servos"][name]
             button(
                 row,
@@ -298,18 +307,122 @@ class ManualTab(ttk.Frame):
             self.app.event("info", "Pulso aceptado; no confirma desplazamiento físico")
 
     def servo(self, name, degree):
+        from app.config import integer
+
+        limits = self.app.config["servos"][name]
+        integer(degree, limits["min"], limits["max"], "Objetivo angular")
+        self.sync_targets()
+        self.angles[name].set(str(degree))
         self.app.command("servo", {"nombre": name, "grado": degree})
 
     def fine(self, name, delta):
-        comm = self.app.dispatcher.communication_snapshot()
-        if comm["state_age_s"] is None or comm["state_age_s"] > 0.75:
+        self.sync_targets()
+        d = self.app.dispatcher
+        ref = d.accepted_servo_targets.get(name)
+        if self.draft_valid[name]:
+            degree = int(self.angles[name].get())
+        elif (
+            ref
+            and ref["generation"] == d.safety.generation
+            and ref["session"] == d.safety.session
+        ):
+            degree = ref["degree"]
+        else:
             raise ValueError(
-                "Estado remoto no reciente: no se calcula un incremento sobre un ángulo antiguo"
+                "Sin referencia de objetivo: edite un ángulo absoluto o seleccione un preset, después Enviar"
             )
-        state = self.app.dispatcher.state
-        if name not in state:
-            raise ValueError("Verifique el estado del servo primero")
-        self.servo(name, state[name] + delta)
+        limits = self.app.config["servos"][name]
+        from app.config import integer
+
+        integer(degree + delta, limits["min"], limits["max"], "Objetivo angular")
+        self.angles[name].set(str(degree + delta))
+
+    def sync_targets(self):
+        d = self.app.dispatcher
+        key = (
+            id(d),
+            d.safety.generation,
+            d.safety.session,
+            d.safety.connected,
+            d.reference_revision,
+        )
+        if key != self.target_context:
+            self.target_context = key
+            for name in self.draft_valid:
+                self.draft_valid[name] = False
+
+    def base_dialog(self):
+        dialog = tk.Toplevel(self)
+        dialog.title("Objetivo local de la base · no es posición física")
+        dialog.geometry("710x450")
+        body = ttk.Frame(dialog, padding=14)
+        body.pack(fill="both", expand=True)
+        row = ttk.Frame(body)
+        row.pack(fill="x")
+        label(
+            row, "Base GPIO18 · 35°–115° · centro 75°", font=("Segoe UI", 12, "bold")
+        ).pack(side="left")
+        button(
+            row,
+            "STOP GLOBAL",
+            lambda: self.app.dispatcher.stop(),
+            style="Danger.TButton",
+        ).pack(side="right")
+        dialog.bind("<Escape>", lambda e: self.app.dispatcher.stop())
+        label(
+            body,
+            "Borrador de objetivo local. Slider, pasos y presets NO envían órdenes.\nEl firmware solo recibe el objetivo al pulsar Enviar. ACK no mide posición física.",
+            wraplength=660,
+        ).pack(anchor="w", pady=12)
+        controls = ttk.Frame(body)
+        controls.pack(fill="x")
+        for step in (-5, -1, 1, 5):
+            button(
+                controls,
+                f"{step:+d}°",
+                lambda step=step: self.run(lambda: self.fine("base", step)),
+                style="Compact.TButton",
+            ).pack(side="left", padx=3)
+        ttk.Spinbox(
+            controls, from_=35, to=115, textvariable=self.angles["base"], width=5
+        ).pack(side="left", padx=8)
+        button(
+            controls,
+            "Enviar",
+            lambda: self.run(
+                lambda: self.servo("base", int(self.angles["base"].get()))
+            ),
+            style="Primary.TButton",
+        ).pack(side="left", padx=8)
+        slider = ttk.Scale(body, from_=35, to=115)
+        slider.set(float(self.angles["base"].get()))
+        slider.configure(
+            command=lambda v: self.angles["base"].set(str(round(float(v))))
+        )
+        slider.pack(fill="x", pady=15)
+        presets = ttk.Frame(body)
+        presets.pack(fill="x")
+        for degree in (35, 55, 75, 95, 115):
+            button(
+                presets,
+                f"{degree}°",
+                lambda degree=degree: self.angles["base"].set(str(degree)),
+                style="Compact.TButton",
+            ).pack(side="left", padx=5)
+        actions = ttk.Frame(body)
+        actions.pack(fill="x", pady=12)
+        button(actions, "Activar", lambda: self.enable("base")).pack(
+            side="left", padx=4
+        )
+        button(actions, "Liberar…", lambda: self.release("base")).pack(
+            side="left", padx=4
+        )
+        label(
+            body,
+            "Sentido al aumentar ángulo (identificar físicamente, no se presupone derecha):",
+            style="Muted.TLabel",
+        ).pack(anchor="w")
+        ttk.Entry(body).pack(fill="x", pady=5)
 
     def enable(self, name):
         if confirm(
@@ -328,6 +441,7 @@ class ManualTab(ttk.Frame):
             self.app.command("release", {"nombre": name, "confirm": 1})
 
     def refresh(self):
+        self.sync_targets()
         d = self.app.dispatcher
         comm = d.communication_snapshot()
         s = (
@@ -343,10 +457,18 @@ class ManualTab(ttk.Frame):
         self.session.set(status, "warning" if d.safety.session else "neutral")
         for name in self.angles:
             limits = self.app.config["servos"][name]
+            with d.safety.lock:
+                accepted=d.accepted_servo_targets.get(name)
             text = f'Orden: {s[name]}° → {s[name+"_objetivo"]}°' if s else "Orden: —"
             set_value(
                 self.servo_limits[name],
-                text + f'   ·   Límites {limits["min"]}–{limits["max"]}°',
+                text
+                + (
+                    f' · ACK objetivo {accepted["degree"]}°'
+                    if accepted
+                    else ""
+                )
+                + f'   ·   Límites {limits["min"]}–{limits["max"]}°',
             )
             self.servo_status[name].set(
                 (

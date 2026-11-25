@@ -3,7 +3,7 @@
 import tkinter as tk
 from tkinter import ttk
 from PIL import ImageTk
-from dataset.capture import SHAPES, COLORS
+from dataset.capture import SHAPES, COLORS, CAPTURE_SHAPES, CAPTURE_COLORS
 from ui.dataset_view import dataset_summary
 from ui.preferences import load_goal, save_goal
 from ui.components.widgets import Card, Metric, Video, label, button, set_value
@@ -21,6 +21,7 @@ class DatasetTab(ttk.Frame):
         super().__init__(parent)
         self.app = app
         self.summary = None
+        self.capture_context = {}
         self.photo = None
         self.goal = 150
         self.columnconfigure(0, weight=1)
@@ -63,8 +64,8 @@ class DatasetTab(ttk.Frame):
             variable.trace_add("write", lambda *_: self.check_burst_labels())
         for i, (name, var, choices) in enumerate(
             (
-                ("Forma", self.shape, SHAPES),
-                ("Color", self.color, COLORS),
+                ("Forma", self.shape, CAPTURE_SHAPES),
+                ("Color", self.color, CAPTURE_COLORS),
                 ("Sesión", self.session, None),
             )
         ):
@@ -97,7 +98,12 @@ class DatasetTab(ttk.Frame):
         self.capture_button = button(
             row,
             "Capturar original",
-            lambda: app.capture(self.shape.get(), self.color.get(), self.session.get()),
+            lambda: app.capture(
+                self.shape.get(),
+                self.color.get(),
+                self.session.get(),
+                metadata=self.capture_context,
+            ),
             style="Primary.TButton",
         )
         self.capture_button.pack(side="left", fill="x", expand=True, padx=(0, 8))
@@ -250,7 +256,10 @@ class DatasetTab(ttk.Frame):
         def start():
             labels = (self.shape.get(), self.color.get(), self.session.get())
             self.app.start_burst(
-                *labels, int(self.burst_count.get()), float(self.burst_interval.get())
+                *labels,
+                int(self.burst_count.get()),
+                float(self.burst_interval.get()),
+                metadata=self.capture_context,
             )
             self.burst_labels = labels
 
@@ -334,6 +343,15 @@ class DatasetTab(ttk.Frame):
 
         button(row, "Revisar calidad y recortes", review).pack(side="left", padx=(0, 8))
         button(row, "Preparar división 70/15/15", split).pack(side="left")
+
+        def advanced():
+            from ui.dataset_advanced import DatasetAdvanced
+
+            DatasetAdvanced(self)
+
+        button(body, "Cobertura, contexto y orientación por archivo…", advanced).pack(
+            fill="x", pady=6
+        )
         self.review_selection = tk.StringVar()
         self.review_choice = ttk.Combobox(
             body, textvariable=self.review_selection, state="readonly"

@@ -148,6 +148,13 @@ def split_sessions(root, seed=42):
                 s = parent[s]
             return s
 
+        from dataset.normalize import records as normalized_records
+
+        linked = {}
+        for item in normalized_records(root):
+            if item.get("review") == "rechazada":
+                continue
+            linked.setdefault(item["original"], []).append(item)
         hashes, derived = {}, {}
         warnings = [
             "Porcentajes aproximados por grupos completos; revisar balance y diversidad."
@@ -197,6 +204,32 @@ def split_sessions(root, seed=42):
                     parent[find(row["session"])] = find(previous["session"])
                 else:
                     hashes[crop_digest] = row
+            for item in linked.get(name, []):
+                if (
+                    hashlib.sha256(safe_path(root, name).read_bytes()).hexdigest()
+                    != item["original_sha256"]
+                ):
+                    raise ValueError(
+                        "Original modificado después de normalizar: " + name
+                    )
+                for relative in (item["normalized"], item.get("crop")):
+                    if not relative:
+                        continue
+                    if not safe_path(root, relative).is_file():
+                        raise ValueError("Falta derivado normalizado: " + relative)
+                    dg = image_digest(safe_path(root, relative))
+                    if dg is None:
+                        raise ValueError("Derivado no decodificable: " + relative)
+                    if dg in hashes:
+                        previous = hashes[dg]
+                        if (
+                            previous["shape"] != row["shape"]
+                            or previous["color"] != row["color"]
+                        ):
+                            raise ValueError("Derivado con etiquetas incompatibles")
+                        parent[find(row["session"])] = find(previous["session"])
+                    else:
+                        hashes[dg] = row
             derived[name] = cp
         groups = {}
         for s in sessions:
@@ -223,8 +256,8 @@ def split_sessions(root, seed=42):
                 for s in g
             }
             if all(
-                {r["shape"] for r in rows if split[r["session"]] == subset}
-                == {"cubo", "cilindro", "prisma_triangular"}
+                {"cubo", "cilindro", "prisma_triangular"}
+                <= {r["shape"] for r in rows if split[r["session"]] == subset}
                 for subset in ("train", "validation", "test")
             ):
                 assignment = split
@@ -237,6 +270,7 @@ def split_sessions(root, seed=42):
             dict(
                 original=r["image"],
                 derived=derived[r["image"]],
+                normalizations=linked.get(r["image"], []),
                 session=r["session"],
                 shape=r["shape"],
                 color=r["color"],
@@ -255,14 +289,33 @@ def split_sessions(root, seed=42):
                 "total": len(selected),
                 "shapes": {
                     k: sum(r["shape"] == k for r in selected)
-                    for k in ("cubo", "cilindro", "prisma_triangular")
+                    for k in ("cubo", "cilindro", "prisma_triangular", "no_objetivo")
                 },
                 "colors": {
                     k: sum(r["color"] == k for r in selected)
-                    for k in ("rojo", "verde", "azul")
+                    for k in ("rojo", "verde", "azul", "sin_color")
                 },
             }
         ready = all(r["eligible_for_training"] for r in items)
+        if any(r["shape"] == "no_objetivo" for r in items) and any(
+            not any(
+                r["shape"] == "no_objetivo" and r["subset"] == subset for r in items
+            )
+            for subset in ("train", "validation", "test")
+        ):
+            ready = False
+            warnings.append(
+                "Negativos sin cobertura en los tres conjuntos; ampliar sesiones independientes"
+            )
+        if any(
+            item.get("review") != "aceptada"
+            for group in linked.values()
+            for item in group
+        ):
+            ready = False
+            warnings.append(
+                "Nuevas normalizaciones pendientes de revisión individual; no habilitadas para entrenamiento"
+            )
         if not ready:
             warnings.append(
                 "Hay muestras sin revisar: esta división NO está habilitada para entrenamiento"

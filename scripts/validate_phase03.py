@@ -45,6 +45,7 @@ def benchmark():
                 "resolution": [width, height],
                 "samples": 200,
                 "mean_ms": float(np.mean(times)),
+                "p50_ms": float(np.percentile(times, 50)),
                 "p95_ms": float(np.percentile(times, 95)),
                 "throughput_fps": 1000 / float(np.mean(times)),
                 "cpu_seconds": time.process_time() - cpu_start,

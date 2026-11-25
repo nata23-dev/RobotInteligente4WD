@@ -51,6 +51,13 @@ class Dispatcher:
         # Exclusión de admisión de órdenes y almacenamiento; STOP nunca la usa.
         self.capture_gate = threading.Lock()
         self.state_confirmed_at = 0.0
+        self.accepted_servo_targets = {}
+        self.reference_revision = 0
+
+    def invalidate_servo_references(self):
+        with self.safety.lock:
+            self.accepted_servo_targets.clear()
+            self.reference_revision += 1
 
     def start(self):
         self.worker.start()
@@ -94,6 +101,7 @@ class Dispatcher:
 
     def stop(self, reason="Parada solicitada"):
         with self.safety.lock:
+            self.invalidate_servo_references()
             self.safety.invalidate(reason + " / no confirmada")
             self.state_confirmed_at = 0.0
             self.communication.stop_state = "Pendiente de confirmación"
@@ -201,6 +209,7 @@ class Dispatcher:
             self.state = state
             self.state_confirmed_at = started
             if self.safety.session and not state["armed"]:
+                self.invalidate_servo_references()
                 self.safety.invalidate("Sesión perdida / requiere rearme explícito")
                 self._cancel()
         self.last_poll = time.monotonic()
@@ -265,6 +274,7 @@ class Dispatcher:
             self._failure(exc, recovering=True)
 
     def suspend_recovery(self):
+        self.invalidate_servo_references()
         self.recovery_suspended.set()
         with self.safety.lock:
             self.safety.invalidate("Supervisión suspendida por cierre o configuración")
@@ -339,12 +349,14 @@ class Dispatcher:
                     self.stop("Armado cancelado durante solicitud")
                     raise PermissionError("Armado cancelado")
                 self.safety.session = result["session"]
+                self.invalidate_servo_references()
                 self.safety.status = "Armado manual explícitamente"
                 self.seq = 0
                 self.last_heartbeat = time.monotonic()
                 self.state_confirmed_at = 0.0
             return result
         if a == "release":
+            self.invalidate_servo_references()
             if p.get("confirm") != 1:
                 raise PermissionError("Sujete el brazo y confirme liberación")
             with self.safety.lock:
@@ -373,11 +385,24 @@ class Dispatcher:
                 raise PermissionError("Controlador sin señal de salud")
             self.seq += 1
             p.update(session=self.safety.session, seq=self.seq)
-        return self._request(
+        result = self._request(
             self.heartbeat_bridge if a == "heartbeat" else self.bridge, a, p
         )
+        if a == "servo":
+            with self.safety.lock:
+                if gen != self.safety.generation or not self.safety.session:
+                    raise PermissionError(
+                        "ACK de servo descartado tras cambio de sesión/STOP"
+                    )
+                self.accepted_servo_targets[p["nombre"]] = {
+                    "degree": p["grado"],
+                    "generation": gen,
+                    "session": self.safety.session,
+                }
+        return result
 
     def _failure(self, exc, recovering=False):
+        self.invalidate_servo_references()
         # Un rechazo físico de interlock no invalida la sesión ni se reintenta.
         if isinstance(exc, APIError) and exc.error in (
             "actuators_busy",

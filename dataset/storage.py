@@ -85,6 +85,7 @@ def commit(root, files, guard=lambda: None):
                 "metadata/vision_v2.jsonl",
                 "metadata/reviews.json",
                 "metadata/split_sessions.json",
+                "metadata/normalizations.jsonl",
             ):
                 backup = tx / f"backup_{index}"
                 if target.exists():

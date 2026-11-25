@@ -1,5 +1,8 @@
 # Validación de software — Fase 03
 
+**Validación vigente 03.4-R — 25/11/2026:** 184/184 pruebas, 141 anteriores intactas y 43 nuevas; QVGA/VGA con p50/p95, evidencia Tk real con fixtures e integridad de 26 originales/7 derivados. [Informe completo y protocolo físico](VALIDACION_FASE03_4R.md). Los resultados de las fases siguientes en este documento son históricos.
+
+
 ## Corrección de comunicaciones 03.3-C — 25/11/2026
 
 Base `a69eb0334620dae3f18cf0e9fbee0610b2de2960`; rama `feat/fase-03-vision`, inicialmente limpia y sincronizada 0/0. Se confirmó el enclavamiento: el error ponía connected=False y la condición del polling impedía cualquier lectura posterior. Se corrige la recuperación de supervisión, **no se atribuye causa física** al corte inicial. [Política de comunicación, estados, timeouts y procedimiento físico](COMUNICACIONES_Y_RECUPERACION.md).

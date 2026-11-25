@@ -94,7 +94,7 @@
     "prisma_triangular": 2
   },
   "dataset_dir": "dataset",
-  "schema_version": 2,
+  "schema_version": 3,
   "vision": {
     "rotation": 0,
     "flip_horizontal": false,
@@ -146,6 +146,57 @@
         ]
       ]
     },
+    "interval_meta": {
+      "rojo": [
+        {
+          "name": "Rojo bajo",
+          "enabled": true
+        },
+        {
+          "name": "Rojo alto",
+          "enabled": true
+        }
+      ],
+      "verde": [
+        {
+          "name": "Verde original",
+          "enabled": true
+        }
+      ],
+      "azul": [
+        {
+          "name": "Azul original",
+          "enabled": true
+        }
+      ]
+    },
+    "search_roi": {
+      "enabled": false,
+      "rect": [
+        0.0,
+        0.0,
+        1.0,
+        1.0
+      ]
+    },
+    "filters": {
+      "min_width": 1,
+      "min_height": 1,
+      "min_area_ratio": 0.0,
+      "aspect_min": 0.05,
+      "aspect_max": 20.0,
+      "solidity_min": 0.0,
+      "extent_min": 0.0,
+      "fill_min": 0.0,
+      "reject_border": false
+    },
+    "tracking": {
+      "confirm_frames": 1,
+      "size_ratio_max": 3.0,
+      "smoothing": 0.5,
+      "max_gap_s": 0.8
+    },
+    "profile_name": "Original",
     "open_kernel": 3,
     "close_kernel": 5,
     "min_area": 80,
@@ -164,7 +215,10 @@
       "target": true,
       "axis": true,
       "roi": true,
-      "markers": true
+      "markers": true,
+      "search": true,
+      "discarded": false,
+      "regions": false
     }
   },
   "dataset_options": {

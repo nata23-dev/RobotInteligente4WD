@@ -53,6 +53,7 @@ class Application:
         self.closed = False
         self.close_error = None
         self.lifecycle_failed = False
+        self.calibration_workers = set()
         self._compose()
         self.worker = threading.Thread(
             target=self._jobs, name="archivos-y-ciclo", daemon=True
@@ -145,6 +146,10 @@ class Application:
         future.add_done_callback(done)
 
     def update_config(self, config):
+        if self.calibration_workers:
+            raise PermissionError(
+                "Cierre el calibrador antes de cambiar la conexión general"
+            )
         if self.lifecycle_failed:
             raise PermissionError(
                 "Ciclo de vida incompleto; reinicie antes de reconfigurar"
@@ -212,11 +217,65 @@ class Application:
                 "No se pudo programar la configuración; vuelva a intentar"
             )
 
-    def capture(self, shape, color, session):
+    def capture(self, shape, color, session, metadata=None):
         camera = self.camera
         self.job(
-            lambda: self._capture_now(shape, color, session, expected_camera=camera)
+            lambda: self._capture_now(
+                shape,
+                color,
+                session,
+                expected_camera=camera,
+                metadata=copy.deepcopy(metadata or {}),
+            )
         )
+
+    def vision_guard(self):
+        if self.closing.is_set() or self.reconfiguring or self.lifecycle_failed:
+            raise PermissionError("Aplicación no disponible para calibrar")
+        if self.camera.snapshot()["fresh"]:
+            self.capture_guard()
+        elif (
+            self.dispatcher.safety.session
+            or self.dispatcher.state.get("armed")
+            or self.dispatcher.state.get("motor_activo")
+            or self.dispatcher.state.get("brazo_ocupado")
+            or self.dispatcher.state.get("maintenance")
+            or self.dispatcher.active
+            or not self.dispatcher.queue.empty()
+        ):
+            raise PermissionError("Calibrar con robot desarmado y en reposo")
+
+    def update_vision(self, profile):
+        new = copy.deepcopy(self.config)
+        new["vision"] = copy.deepcopy(profile)
+        new = validate(new)
+        self.vision_guard()
+
+        def task():
+            if not self.capture_lock.acquire(blocking=False):
+                raise PermissionError(
+                    "Captura en curso; espere para aplicar calibración"
+                )
+            try:
+                if self.burst.running:
+                    raise PermissionError(
+                        "Cancele la ráfaga antes de aplicar calibración"
+                    )
+                self.vision_guard()
+                save(new)
+                self.config = new
+                self.camera.config = copy.deepcopy(new)
+                self.vision.config = copy.deepcopy(new)
+                self.vision.reconfigure(profile)
+                self.event(
+                    "vision_configured",
+                    "Perfil visual guardado; cámara y comunicaciones conservadas",
+                )
+            finally:
+                self.capture_lock.release()
+
+        if not self.job(task):
+            raise RuntimeError("No se pudo guardar perfil visual")
 
     def capture_guard(self):
         if self.closing.is_set() or self.reconfiguring or self.lifecycle_failed:
@@ -259,15 +318,21 @@ class Application:
                 "Capturar con el robot desarmado y actuadores en reposo"
             )
 
-    def _capture_now(self, shape, color, session, frame=None, expected_camera=None):
+    def _capture_now(
+        self, shape, color, session, frame=None, expected_camera=None, metadata=None
+    ):
         if not self.capture_lock.acquire(blocking=False):
             raise RuntimeError("Ya hay una captura en curso")
         try:
-            return self._write_capture(shape, color, session, frame, expected_camera)
+            return self._write_capture(
+                shape, color, session, frame, expected_camera, metadata
+            )
         finally:
             self.capture_lock.release()
 
-    def _write_capture(self, shape, color, session, frame, expected_camera):
+    def _write_capture(
+        self, shape, color, session, frame, expected_camera, metadata=None
+    ):
         if expected_camera is not None and expected_camera is not self.camera:
             raise ValueError("La cámara cambió")
         self.capture_guard()
@@ -295,12 +360,24 @@ class Application:
                 raise InterruptedError("Ráfaga cancelada durante almacenamiento")
 
         path, record = self.dataset.save_record(
-            frame, shape, color, session, self.config, guard
+            frame,
+            shape,
+            color,
+            session,
+            self.config,
+            guard,
+            metadata=metadata
+            or (getattr(self, "burst_context", {}) if is_burst else {}),
         )
         self.event("quality", record["quality"])
         self.event("capture", (path, self.dataset.counts()))
 
-    def start_burst(self, shape, color, session, count=None, interval=None):
+    def start_burst(
+        self, shape, color, session, count=None, interval=None, metadata=None
+    ):
+        if self.burst.running:
+            raise RuntimeError("Ya existe una ráfaga activa")
+        self.burst_context = copy.deepcopy(metadata or {})
         options = self.config["dataset_options"]
         self.burst.start(
             shape,
@@ -389,17 +466,21 @@ class Application:
         self.dispatcher.suspend_recovery()
         self.burst.cancel.set()
         try:
-            with self.operation_lock:
-                try:
-                    self.dispatcher.close()
-                finally:
+            try:
+                for worker in list(self.calibration_workers):
+                    worker.stop()
+            finally:
+                with self.operation_lock:
                     try:
-                        self.burst.stop()
+                        self.dispatcher.close()
                     finally:
                         try:
-                            self.vision.stop()
+                            self.burst.stop()
                         finally:
-                            self.camera.stop()
+                            try:
+                                self.vision.stop()
+                            finally:
+                                self.camera.stop()
         finally:
             if threading.current_thread() is not self.worker:
                 self.worker.join(5)
