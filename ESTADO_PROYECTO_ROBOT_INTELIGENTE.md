@@ -483,3 +483,10 @@ Plan Fase 03.3: HSV, colores, morfología, contornos, centroides, cajas, error l
 Documentos: README actualizado, docs/CONSOLIDACION_FASE02_1.md y docs/PLAN_FASE03.md; plan físico actualizado sin borrar historia. Próximo paso: revisión externa del código consolidado; operador resuelve alimentación y movimiento al encender, confirma FL/seguridad/cámara/brazo. Preparado para planificar Fase 03, no para autonomía física ni para comenzar su implementación sin nuevas instrucciones.
 
 Regresión final previa al commit de consolidación: 65/65, cero fallos/errores/omisiones, 16.797 s. Aplicación, interfaz, comunicación, seguridad, firmware, requisitos e instaladores intactos frente a 46e20f8; única corrección existente en la espera estricta de una prueba. git fsck sin corrupción; blobs sueltos no alcanzables conservados, sin purgar ni publicar.
+
+
+### Publicación verificada de Fase 02.1 — 24/11/2026
+
+Publicado commit 00bf0b52307e2a2706b60da98c611388cb34a445 (chore: consolidar fase 02 y preparar repositorio seguro) en https://github.com/nata23-dev/RobotInteligente4WD . Visibilidad PUBLIC por autorización posterior del propietario; no PRIVATE. Rama predeterminada y única rama publicada: main. HEAD, origin/main y ls-remote coincidieron, divergencia 0/0 y upstream origin/main. ui/fase-01-1 permanece local. GitHub y REST sin autenticación confirmaron identidad/visibilidad; README público coincide byte por byte con el blob local. Integración GitHub leyó README, bitácora, main.py, pruebas, informe y ejemplo; árbol remoto de 75 archivos verificado sin privados ni entornos. Auditor de origin/main: tres commits/76 blobs, cero hallazgos de credenciales conocidas; Gitleaks y staging sin detecciones. Historial anterior intacto, sin force ni repositorios adicionales. Informe inicial en evidencias/consolidacion_2026_11_24/remote_verification_inicial.json.
+
+Se registra esta comprobación en un commit documental posterior y se verifica de nuevo su sincronización final. No se ejecutan cambios funcionales ni Fase 03. Seguridad física, alimentación y movimiento al encender siguen abiertos; pruebas de software finales 65/65 en 16.797 s y sin hardware físico.

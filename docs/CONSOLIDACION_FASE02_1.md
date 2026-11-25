@@ -81,3 +81,11 @@ Pendientes: FL y ocho sentidos, parada física y vencimiento exactos, calibraci�
 La rama estable prevista es `main`, con todo el historial local preservado y sin publicar `ui/fase-01-1` por separado. El commit de consolidación se publica únicamente después de auditoría y pruebas. La comprobación posterior contrasta `HEAD`, `origin/main` y `git ls-remote`, vuelve a consultar visibilidad/propietario/rama en GitHub y lee archivos del remoto. El resultado se incorpora a la bitácora y al informe local de verificación; no basta con que push termine correctamente.
 
 La visibilidad correcta en esta tarea es **PUBLIC por instrucción posterior del propietario**. No se debe describir la publicación como privada. Al ser público, puede revisarse sin conceder acceso a terceros; una integración conectada puede requerir selección del repositorio por su propietario, pero esta tarea no modifica esos permisos.
+
+### Verificación efectuada — 24/11/2026
+
+Se publicó [00bf0b52307e2a2706b60da98c611388cb34a445](https://github.com/nata23-dev/RobotInteligente4WD/commit/00bf0b52307e2a2706b60da98c611388cb34a445), mensaje `chore: consolidar fase 02 y preparar repositorio seguro`. `HEAD`, `origin/main` y `git ls-remote` coincidieron, con upstream `origin/main` y divergencia 0/0. Única rama remota: `main`; la rama visual se conserva solo localmente.
+
+GitHub y una consulta REST sin credenciales confirmaron propietario `nata23-dev`, visibilidad PUBLIC y rama predeterminada `main`. Se leyó el README público sin autenticación y sus bytes coincidieron con el blob local. La integración leyó README, bitácora, entrada, prueba de despacho, informe y configuración de ejemplo desde el commit publicado. El árbol remoto contenía 75 archivos, con fuentes, pruebas, documentación y ejemplos requeridos; sin configuraciones privadas ni entornos. Auditor específico de `origin/main`: tres commits/76 blobs únicos revisados, cero hallazgos conocidos. Gitleaks sobre esos tres commits y staging: cero detecciones.
+
+Este registro documental se agrega después de esa comprobación, preservando el commit verificado. El último hash posterior se comprueba otra vez frente al remoto y se entrega en el informe final al propietario; la verificación local queda en `evidencias/consolidacion_2026_11_24/remote_verification.json`. No hubo accionamiento ni comunicación con el hardware físico.
