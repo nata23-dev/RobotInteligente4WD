@@ -93,5 +93,90 @@
     "cilindro": 1,
     "prisma_triangular": 2
   },
-  "dataset_dir": "dataset"
+  "dataset_dir": "dataset",
+  "schema_version": 2,
+  "vision": {
+    "rotation": 0,
+    "flip_horizontal": false,
+    "flip_vertical": false,
+    "digital": {
+      "brightness": 0,
+      "contrast": 1.0,
+      "saturation": 1.0,
+      "gamma": 1.0,
+      "sharpness": 0.0
+    },
+    "hsv": {
+      "rojo": [
+        [
+          0,
+          90,
+          60,
+          10,
+          255,
+          255
+        ],
+        [
+          170,
+          90,
+          60,
+          179,
+          255,
+          255
+        ]
+      ],
+      "verde": [
+        [
+          35,
+          70,
+          50,
+          85,
+          255,
+          255
+        ]
+      ],
+      "azul": [
+        [
+          90,
+          80,
+          50,
+          135,
+          255,
+          255
+        ]
+      ]
+    },
+    "open_kernel": 3,
+    "close_kernel": 5,
+    "min_area": 80,
+    "max_area_ratio": 0.85,
+    "grip_roi": [
+      0.35,
+      0.65,
+      0.3,
+      0.3
+    ],
+    "crop_margin": 0.12,
+    "tracking_radius": 0.2,
+    "lost_frames": 4,
+    "overlays": {
+      "objects": true,
+      "target": true,
+      "axis": true,
+      "roi": true,
+      "markers": true
+    }
+  },
+  "dataset_options": {
+    "burst_count": 10,
+    "burst_interval_s": 1.0,
+    "min_width": 320,
+    "min_height": 240,
+    "dark_mean": 45,
+    "bright_mean": 215,
+    "min_sharpness": 45.0,
+    "min_object_ratio": 0.01,
+    "similarity_distance": 4,
+    "reject_exact_duplicates": false
+  }
 }

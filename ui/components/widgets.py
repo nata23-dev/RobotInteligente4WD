@@ -7,6 +7,7 @@ from tkinter import ttk, messagebox
 from PIL import Image, ImageTk
 from ui import theme
 from ui.components.icons import icon
+from ai.transforms import fit_size
 
 C = theme.COLORS
 
@@ -313,10 +314,11 @@ class Video(ttk.Frame):
                 max(1, self.viewport.winfo_width() - 8),
                 max(1, self.viewport.winfo_height() - 8),
             )
-            key = (f.id, size)
+            key = (f.generation, f.id, size)
             if key != self.last:
                 image = Image.fromarray(f.image[:, :, ::-1])
-                image.thumbnail(size)
+                target = fit_size(image.width, image.height, size)
+                image = image.resize(target, Image.Resampling.BICUBIC if target[0] > image.width else Image.Resampling.LANCZOS)
                 self.photo = ImageTk.PhotoImage(image)
                 self.empty.place_forget()
                 self.label.configure(image=self.photo)

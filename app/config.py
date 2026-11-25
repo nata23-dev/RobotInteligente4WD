@@ -4,6 +4,7 @@ import json
 import math
 from pathlib import Path
 from urllib.parse import urlsplit
+from app import vision_config
 
 ROOT = Path(__file__).resolve().parents[1]
 LOCAL = ROOT / 'config.local.json'
@@ -30,6 +31,8 @@ def defaults():
         'aruco': {'dictionary': 'DICT_4X4_50', 'cubo': 0, 'cilindro': 1,
                   'prisma_triangular': 2},
         'dataset_dir': 'dataset',
+        'schema_version': 2, 'vision': vision_config.defaults(),
+        'dataset_options': vision_config.dataset_defaults(),
     }
 
 
@@ -62,6 +65,7 @@ def url(value, name, optional=True):
 
 
 def validate(c):
+    c = vision_config.migrate(c)
     if set(c) != set(defaults()):
         raise ValueError('Faltan campos o hay campos desconocidos en configuración')
     if type(c['simulation']) is not bool:
@@ -104,6 +108,9 @@ def validate(c):
         raise ValueError('Destinos fase 01: DICT_4X4_50 / cubo 0, cilindro 1, prisma 2')
     if not isinstance(c['dataset_dir'], str) or not c['dataset_dir'].strip():
         raise ValueError('Directorio de dataset requerido')
+    if type(c['schema_version']) is not int or c['schema_version'] != 2:
+        raise ValueError('Versión de configuración no soportada')
+    vision_config.validate(c['vision'], c['dataset_options'])
     return copy.deepcopy(c)
 
 

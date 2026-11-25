@@ -2,6 +2,7 @@
 from collections import deque
 import threading
 import time
+import uuid
 import cv2
 from app.models import Frame
 
@@ -18,6 +19,7 @@ class Camera:
         self.frame_id = 0
         self.status = 'Desconectada'
         self.errors = 0
+        self.generation = uuid.uuid4().hex
 
     def _open(self, url):
         timeout = self.config['camera_timeout_ms']
@@ -56,6 +58,7 @@ class Camera:
                 cap = self.factory(self.config['camera_url'])
                 if not cap.isOpened():
                     raise OSError('No disponible')
+                self.generation = uuid.uuid4().hex
                 while not self.cancel.is_set():
                     ok, image = cap.read()
                     if not ok or image is None:
@@ -67,7 +70,7 @@ class Camera:
                         if self.cancel.is_set():
                             break
                         self.frame_id += 1
-                        self.latest = Frame(self.frame_id, now, image.copy(), fps)
+                        self.latest = Frame(self.frame_id, now, image.copy(), fps, self.generation)
                         self.status = 'Conectada'
             except Exception:
                 with self.lock:
