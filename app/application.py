@@ -2,6 +2,7 @@
 
 import copy
 import csv
+import json
 from datetime import datetime
 import logging
 from logging.handlers import QueueHandler, QueueListener, RotatingFileHandler
@@ -62,9 +63,14 @@ class Application:
         c = copy.deepcopy(self.config)
         if c["simulation"]:
             bridge = stop_bridge = Simulator()
+            recovery_bridge = heartbeat_bridge = bridge
         else:
-            bridge, stop_bridge = HTTPBridge(c), HTTPBridge(c)
-        self.dispatcher = Dispatcher(bridge, stop_bridge, c)
+            bridge, stop_bridge = HTTPBridge(c), HTTPBridge(c, purpose="stop")
+            recovery_bridge = HTTPBridge(c, purpose="recovery")
+            heartbeat_bridge = HTTPBridge(c, purpose="heartbeat")
+        self.dispatcher = Dispatcher(
+            bridge, stop_bridge, c, recovery_bridge, heartbeat_bridge
+        )
         self.dispatcher.capture_gate = self.capture_lock
         self.controller = Controller(self.dispatcher)
         self.camera = Camera(c)
@@ -157,6 +163,7 @@ class Application:
                 raise PermissionError("Espere a que terminen las tareas pendientes")
             self.reconfiguring = True
             self.dispatcher.safety.invalidate("Cambio de configuración")
+            self.dispatcher.suspend_recovery()
 
         def apply():
             previous = self.config
@@ -200,6 +207,7 @@ class Application:
 
         if not self.job(apply, internal=True):
             self.reconfiguring = False
+            self.dispatcher.resume_recovery()
             raise RuntimeError(
                 "No se pudo programar la configuración; vuelva a intentar"
             )
@@ -219,6 +227,8 @@ class Application:
                 age = time.monotonic() - self.dispatcher.state_confirmed_at
                 if (
                     not self.dispatcher.safety.connected
+                    or self.dispatcher.closed.is_set()
+                    or not self.dispatcher.worker.is_alive()
                     or not 0 <= age <= 0.75
                     or not isinstance(state, dict)
                     or any(
@@ -358,6 +368,14 @@ class Application:
             target.mkdir(parents=True, exist_ok=True)
             for source in (ROOT / "logs").glob("robot.log*"):
                 shutil.copy2(source, target / source.name)
+            (target / "comunicaciones.json").write_text(
+                json.dumps(
+                    self.dispatcher.communication_snapshot(),
+                    ensure_ascii=False,
+                    indent=2,
+                ),
+                encoding="utf-8",
+            )
             self.event("info", "Registros exportados a " + str(target))
 
         self.job(task)
@@ -368,6 +386,7 @@ class Application:
         self.closing.set()
         if self.dispatcher.safety.connected or self.dispatcher.safety.session:
             self.dispatcher.stop("Cierre de aplicación")
+        self.dispatcher.suspend_recovery()
         self.burst.cancel.set()
         try:
             with self.operation_lock:

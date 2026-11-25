@@ -204,12 +204,18 @@ class AutomaticTab(ttk.Frame):
         self.context_label.configure(wraplength=max(100, self.side.winfo_width() - 28))
 
     def refresh(self, metrics):
+        comm = self.app.dispatcher.communication_snapshot()
+        network = (
+            f'Comunicación: {comm["state"]} · fallos/consecutivos {comm["errors"]}/{comm["consecutive_errors"]} · reconexiones {comm["reconnections"]}\n'
+            f'STOP: {comm["stop_state"]} · remoto: {comm["remote_state"]} · último fallo: {comm["last_failure"] or "ninguno"}'
+        )
         v = self.app.vision.snapshot()
         r = v["result"]
         if not r:
             set_value(
                 self.detail_var,
-                "Sin percepción vigente. CNN: sin modelo. Difusa y heurística: sin implementar.",
+                "Sin percepción vigente. CNN: sin modelo. Difusa y heurística: sin implementar.\n"
+                + network,
             )
             return
         o = r.observation

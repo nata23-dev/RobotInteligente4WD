@@ -158,6 +158,9 @@ class MainWindow(tk.Tk):
         self.bind("<Escape>", lambda e: app.dispatcher.stop())
         self.protocol("WM_DELETE_WINDOW", self.close)
         self._update_navigation()
+        # Resolver geometría inicial antes de aceptar los primeros frames;
+        # el primer tick no debe consumir su presupuesto de frescura en layout.
+        self.update_idletasks()
         self._tick_id = self.after(80, self.tick)
 
     def navigate(self, index):
@@ -277,21 +280,32 @@ class MainWindow(tk.Tk):
     def _telemetry(self, cam):
         d = self.app.dispatcher
         s = d.safety.snapshot()
+        comm = d.communication_snapshot()
         sim = self.app.config["simulation"]
         self.badge.set(
             "Modo simulación" if sim else "Hardware real",
             "warning" if sim else "primary",
         )
+        compact = {
+            "Sin verificar": "Sin verificar",
+            "Conectando": "Conectando",
+            "Conectado": "Conectado",
+            "Conexión inestable": "Conexión inestable",
+            "Comunicación perdida": "Sin comunicación",
+            "Reconectando": "Reconectando",
+            "Conexión recuperada / desarmado": "Recuperado/desarmado",
+            "Estado remoto desconocido": "Estado desconocido",
+        }
         self.connection.set(
-            (
-                "●  Simulador listo"
-                if sim and s["connected"]
-                else "●  ESP32 verificado" if s["connected"] else "●  Sin verificar"
-            ),
+            "Simulador listo" if sim and s["connected"] else compact[comm["state"]],
             (
                 "primary"
                 if sim and s["connected"]
-                else "success" if s["connected"] else "neutral"
+                else (
+                    "success"
+                    if s["connected"]
+                    else "warning" if d.recovery_enabled else "neutral"
+                )
             ),
         )
         danger = (
@@ -307,9 +321,12 @@ class MainWindow(tk.Tk):
             ),
             "danger" if danger else "warning",
         )
-        metrics = d.bridge.metrics()
-        self.auto.refresh(metrics)
-        self.manual.refresh()
+        metrics = comm
+        selected = self.tabs.index("current")
+        if selected == 0:
+            self.auto.refresh(metrics)
+        if selected == 1:
+            self.manual.refresh()
         can_capture = (
             cam["fresh"]
             and not s["session_authorized"]
@@ -337,33 +354,37 @@ class MainWindow(tk.Tk):
             else "—"
         )
         p95 = "—" if metrics["p95"] is None else f'{metrics["p95"]:.1f}'
-        firmware_state = (
-            "—"
-            if not s["connected"] or not d.state
-            else "armado" if d.state.get("armed") else "desarmado"
-        )
+        firmware_state = {
+            "Desconocido": "Remoto desconocido",
+            "Desarmado / reposo lógico": "Remoto en reposo",
+            "Armado aceptado (ACK); sin telemetría reciente": "Armado (ACK)",
+        }.get(comm["remote_state"], comm["remote_state"])
         mode = {"manual": "Manual", "automatico": "Automático", "dataset": "Dataset"}[
             s["mode"]
         ]
         text = (
-            f'{"Simulador" if sim else "ESP32"}: {"verificado" if s["connected"] else "sin verificar"}  ·  Cámara: {cam["status"]}  ·  Modo: {mode}\nFW {d.health.get("version","—")} / API {d.health.get("api_version","—")} · {firmware_state}  ·  {resolution} / {fps} FPS  ·  p95 {p95} ms'
+            f'{"Simulador" if sim else "ESP32"}: {compact[comm["state"]]}  ·  Cámara: {cam["status"]}  ·  Modo: {mode}\nFW {d.health.get("version","—")} / API {d.health.get("api_version","—")} · {firmware_state}  ·  {resolution} / {fps} FPS  ·  p95 {p95} ms'
             + (" (sim.)" if sim else "")
             + f'  ·  Errores {metrics["errors"]}'
         )
         set_value(self.status, text)
         set_value(
             self.config_tab.diagnostics,
-            f'Firmware {d.health.get("version","—")} / API {d.health.get("api_version","—")} · {s["safety"]}',
+            f'Firmware {d.health.get("version","—")} / API {d.health.get("api_version","—")} · {comm["state"]} · {s["safety"]}',
         )
 
         def number(value):
             return "—" if value is None else f"{value:.1f}"
 
+        if selected != 3 or self.config_tab.category != "Mantenimiento":
+            return
         set_value(
             self.config_tab.performance,
-            f'API {"simulada" if sim else "HTTP"}: p50 {number(metrics["p50"])} / p95 {p95} / última {number(metrics["last"])} ms\n'
-            f'Controlador: {number(d.response_ms)} ms · errores HTTP {metrics["errors"]} / cámara {cam["errors"]}\n'
-            f'Edad desde recepción: {number(cam["age_s"]*1000 if cam["age_s"] is not None else None)} ms; no es latencia de captura completa.',
+            f'API {"simulada" if sim else "HTTP"}, ventana 60 s: OK {comm["successes"]} / fallos {comm["errors"]} / consecutivos {comm["consecutive_errors"]}\n'
+            f'p50 {number(metrics["p50"])} / p95 {p95} / máximo {number(comm["max"])} ms · última válida hace {number(comm["last_valid_age_s"])} s\n'
+            f'Reconexiones {comm["reconnections"]} · corte actual {number(comm["current_outage_s"])} / último {number(comm["last_outage_s"])} s · motivo {comm["last_failure"] or "sin fallos"}\n'
+            f'STOP: {comm["stop_state"]} · remoto: {comm["remote_state"]} · edad desde inicio de state {number(comm["state_age_s"])} s\n'
+            f'Controlador {number(d.response_ms)} ms · errores cámara {cam["errors"]}. La latencia de cámara completa no se mide aquí.',
         )
 
     def close(self):

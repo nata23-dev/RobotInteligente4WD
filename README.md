@@ -1,5 +1,7 @@
 # Robot Inteligente 4WD
 
+**Corrección 03.3-C — 25/11/2026:** recuperación automática de supervisión desarmada tras errores transitorios, sin rearme ni repetición de movimientos. Conexión, estado reciente, autorización y STOP se muestran por separado. Heartbeat y STOP conservan prioridad; las lecturas lentas de recuperación no habilitan captura. Configuración privada efectiva preservada: timeout 0.30 s y heartbeat 0.25 s. [Política, diagnóstico y pruebas físicas pendientes](docs/COMUNICACIONES_Y_RECUPERACION.md). No se reprodujeron las mediciones físicas del operador durante el desarrollo.
+
 **Fase 03 implementada en software, 24/11/2026.** Rama de revisión `feat/fase-03-vision`; `main` conserva la base estable `4bd6ba6`. Incluye orientación y ajustes digitales, Automático con visor Original/Procesada/Máscara, HSV, seguimiento visual, ArUco, ROI, ráfagas cancelables, calidad, recortes trazables y división por sesiones. No se contactó hardware; autonomía, CNN, lógica difusa y heurística siguen bloqueadas o pendientes. Véanse [la guía de uso](docs/VISION_Y_DATASET_FASE03.md) y [la validación](docs/VALIDACION_FASE03.md). Los informes anteriores conservan su contexto histórico.
 
 Aplicación local de escritorio para supervisar y operar manualmente el robot mediante **Robot4WD 1.0.0 / API 1**. La primera ejecución usa **simulación**, sin conectar ni armar hardware. La sección Automático abre por defecto; CNN, heurística, control difuso y navegación están pendientes y su inicio está deshabilitado. La Fase 01.1 incorpora identidad clara y navegación lateral sobre la base funcional de la Fase 01.
@@ -30,7 +32,7 @@ La PC recibe video en un trabajador, despacha comandos/heartbeat en otro, superv
 
 SSID corregido: `ESP32-CAM-CARRO`. Cámara `192.168.4.1`, principal observado por DHCP en `192.168.4.2` y diagnóstico `Robot4WD_Diagnostico` en `192.168.10.1`. Stream reportado: `http://192.168.4.1:81/stream`, 320×240 y aproximadamente 10–12 FPS, con orientación incorrecta cercana a 90° y calidad pendiente de optimizar. Se reportaron p95 de 32–47 ms en algunas pruebas estables; no son mediciones nuevas de esta consolidación. Varias desconexiones fueron deliberadas al cambiar de Wi-Fi.
 
-Se comprobó en el archivo privado que el heartbeat es 0.25 s y el timeout guardado es **0.18 s**, aunque el operador había comunicado ajustar 0.30 s. No se cambió ese valor automáticamente. Las direcciones DHCP observadas no son garantías permanentes.
+En Fase 02.1 el archivo privado guardaba heartbeat 0.25 s y timeout **0.18 s**, aunque se había comunicado ajustar 0.30 s. En la revisión del **25/11/2026** ya guardaba **0.30 s**, avance del operador que se preservó sin reescribir configuración. Las direcciones DHCP observadas no son garantías permanentes.
 
 La pérdida de ambas redes y de potencia apunta provisionalmente a baterías descargadas/caída de tensión, sin medición eléctrica que confirme la causa. El giro de una rueda desde la energización es una incidencia prioritaria: debe resolverse y verificarse físicamente antes de autorizar autonomía. Brazo, desplazamientos, agarre, transporte y depósito siguen pendientes. Detalle y procedencia: [bitácora](ESTADO_PROYECTO_ROBOT_INTELIGENTE.md).
 

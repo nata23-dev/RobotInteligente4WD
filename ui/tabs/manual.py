@@ -301,6 +301,11 @@ class ManualTab(ttk.Frame):
         self.app.command("servo", {"nombre": name, "grado": degree})
 
     def fine(self, name, delta):
+        comm = self.app.dispatcher.communication_snapshot()
+        if comm["state_age_s"] is None or comm["state_age_s"] > 0.75:
+            raise ValueError(
+                "Estado remoto no reciente: no se calcula un incremento sobre un ángulo antiguo"
+            )
         state = self.app.dispatcher.state
         if name not in state:
             raise ValueError("Verifique el estado del servo primero")
@@ -324,7 +329,14 @@ class ManualTab(ttk.Frame):
 
     def refresh(self):
         d = self.app.dispatcher
-        s = d.state if d.safety.connected else {}
+        comm = d.communication_snapshot()
+        s = (
+            d.state
+            if d.safety.connected
+            and comm["state_age_s"] is not None
+            and comm["state_age_s"] <= 0.75
+            else {}
+        )
         status = "Sesión autorizada" if d.safety.session else "Sin sesión"
         if s.get("motor_activo") or s.get("brazo_ocupado"):
             status += " · Actuadores ocupados"

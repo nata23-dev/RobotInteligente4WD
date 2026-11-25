@@ -10,8 +10,9 @@ SEQUENCED = {'heartbeat', 'drive', 'enable', 'servo'}
 
 
 class APIError(Exception):
-    def __init__(self, error, status=0):
+    def __init__(self, error, status=0, category=None):
         self.error, self.status = error, status
+        self.category = category
         super().__init__(f'HTTP {status}: {error}' if status else error)
 
 
@@ -39,11 +40,15 @@ def validate_command(action, p):
 
 
 def validate_health(data):
+    if not isinstance(data, dict):
+        raise APIError('invalid_response')
     if (data.get('firmware'), data.get('version'), data.get('api_version')) != ('Robot4WD', '1.0.0', 1):
         raise APIError('Firmware incompatible: se requiere Robot4WD 1.0.0 / API 1')
 
 
 def validate_state(data):
+    if not isinstance(data, dict):
+        raise APIError('invalid_response')
     for key in ('armed', 'maintenance', 'motor_activo', 'brazo_ocupado',
                 'servo_garra_activo', 'servo_base_activo'):
         if type(data.get(key)) is not bool:
