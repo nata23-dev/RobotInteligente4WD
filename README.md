@@ -1,8 +1,36 @@
-# Robot Inteligente 4WD — Fase 01.1
+# Robot Inteligente 4WD
 
 Aplicación local de escritorio para supervisar y operar manualmente el robot mediante **Robot4WD 1.0.0 / API 1**. La primera ejecución usa **simulación**, sin conectar ni armar hardware. La sección Automático abre por defecto; CNN, heurística, control difuso y navegación están pendientes y su inicio está deshabilitado. La Fase 01.1 incorpora identidad clara y navegación lateral sobre la base funcional de la Fase 01.
 
-Esta entrega de software no certifica el robot físico. No se enviaron órdenes al hardware durante su desarrollo. Los patrones recuperados de V7, el agarre, la alimentación y el video real requieren validación del operador. La parada de software no corta electricidad.
+Durante la construcción y esta consolidación automatizada no se enviaron órdenes al hardware. El operador reportó posteriormente conexión real, video simultáneo y pruebas lógicas de sesión/STOP; esos avances parciales están registrados en la bitácora. No certifican la seguridad física completa. **El robot está fuera de servicio temporalmente por una incidencia de alimentación y un giro inesperado de una rueda al encender. La autonomía permanece bloqueada.** La parada de software no corta electricidad.
+
+## Propósito y estado actual — 24/11/2026
+
+Proyecto académico de Inteligencia Artificial, con entrega el **30 de noviembre de 2026**. El objetivo final es detectar, reconocer, recoger, transportar y clasificar cubos, cilindros y prismas triangulares de colores rojo/verde/azul, clasificando principalmente por forma. Se prevé integrar heurística, procesamiento de imágenes, CNN y lógica difusa en las decisiones y movimientos reales; **esa autonomía todavía no está implementada ni validada**.
+
+- **Fase 01:** infraestructura modular, API 1, control manual, seguridad, cámara, dataset y simulador.
+- **Fase 01.1:** interfaz clara con navegación lateral y formularios; se conserva sin un nuevo rediseño de Automático.
+- **Fase 02:** comprobaciones físicas iniciales comunicadas por el operador, con cierre formal pendiente; no existe un commit independiente que implemente otra arquitectura.
+- **Fase 02.1:** consolidación, auditoría y publicación del estado completo; consultar [el informe de consolidación](docs/CONSOLIDACION_FASE02_1.md).
+- **Fase 03:** [planificada](docs/PLAN_FASE03.md), sin implementar: cámara, nuevo Automático, visión y herramientas del dataset.
+
+Fuente central de continuidad: [ESTADO_PROYECTO_ROBOT_INTELIGENTE.md](ESTADO_PROYECTO_ROBOT_INTELIGENTE.md). Los informes históricos conservan los resultados de cada fase y no sustituyen la ejecución actual de pruebas.
+
+## Arquitectura y componentes
+
+Una sola aplicación Python en Windows realiza interfaz, comunicaciones, captura, registros y futura IA. El ESP32 principal ejecuta actuadores y vigilancia local mediante HTTP Robot4WD 1.0.0/API 1; la ESP32-CAM transmite MJPEG y proporciona la red compartida según el montaje observado. La operación es local, sin servicios externos durante el control.
+
+Hardware declarado: ESP32 principal, ESP32-CAM con OV5640, cuatro motores DC y ruedas Mecanum, dos L298N con jumpers ENA/ENB, brazo de altura fija con giro horizontal y dos servos funcionales (garra/base), baterías y alimentación del montaje. No hay control PWM independiente de velocidad ni sensores de agarre, corriente o posición física reportados. Pines conservados: FL 26/25, FR 33/32, RL 13/12, RR 14/27; garra 21 y base 18.
+
+La PC recibe video en un trabajador, despacha comandos/heartbeat en otro, supervisa seguridad y actualiza Tkinter en su hilo principal. Python no comparte la autoridad de actuadores con fuentes paralelas. Tecnologías: Python 3.12 x64, Tkinter/ttk, OpenCV contrib, NumPy, Pillow, Requests, threading/queue, dataclasses, JSON, CSV, logging, unittest y Git. TensorFlow/Keras se reserva para una fase posterior.
+
+### Observaciones comunicadas por el operador
+
+SSID corregido: `ESP32-CAM-CARRO`. Cámara `192.168.4.1`, principal observado por DHCP en `192.168.4.2` y diagnóstico `Robot4WD_Diagnostico` en `192.168.10.1`. Stream reportado: `http://192.168.4.1:81/stream`, 320×240 y aproximadamente 10–12 FPS, con orientación incorrecta cercana a 90° y calidad pendiente de optimizar. Se reportaron p95 de 32–47 ms en algunas pruebas estables; no son mediciones nuevas de esta consolidación. Varias desconexiones fueron deliberadas al cambiar de Wi-Fi.
+
+Se comprobó en el archivo privado que el heartbeat es 0.25 s y el timeout guardado es **0.18 s**, aunque el operador había comunicado ajustar 0.30 s. No se cambió ese valor automáticamente. Las direcciones DHCP observadas no son garantías permanentes.
+
+La pérdida de ambas redes y de potencia apunta provisionalmente a baterías descargadas/caída de tensión, sin medición eléctrica que confirme la causa. El giro de una rueda desde la energización es una incidencia prioritaria: debe resolverse y verificarse físicamente antes de autorizar autonomía. Brazo, desplazamientos, agarre, transporte y depósito siguen pendientes. Detalle y procedencia: [bitácora](ESTADO_PROYECTO_ROBOT_INTELIGENTE.md).
 
 ## Instalar en Windows
 
@@ -42,13 +70,13 @@ El simulador genera estado lógico de actuadores y errores de protocolo; no gene
 ## Primera conexión física
 
 1. Lea [el plan físico](docs/PLAN_DE_PRUEBAS_FISICAS.md). Confirme firmware instalado, cableado y alimentación con los actuadores inicialmente sin energía, ruedas suspendidas, brazo apoyado e interruptor físico accesible.
-2. Conecte la PC a `ESP32CAM-CARRO`, si la topología real lo permite. Obtenga la IP DHCP del principal desde monitor serie a 115200. No suponga `.200`. La red `Robot4WD_Diagnostico` en `192.168.10.1` permite diagnóstico, pero no garantiza acceso a cámara.
+2. Conecte la PC a `ESP32-CAM-CARRO`, según el nombre corregido comunicado por el operador. Obtenga la IP DHCP del principal desde monitor serie a 115200. No suponga `.200` ni que `.2` sea permanente. La red `Robot4WD_Diagnostico` en `192.168.10.1` permite diagnóstico, pero no garantiza acceso a cámara.
 3. En Configuración → Conectividad introduzca la dirección HTTP del ESP32, la URL del video y la clave local en su campo oculto. Desmarque Simulación, guarde y confirme el cambio explícito a hardware real. El JSON interno y sus validaciones se conservan; no hace falta editarlo manualmente.
 4. Pulse Verificar conexión/API. Debe identificar Robot4WD **1.0.0**, API **1**, y obtener estado autenticado. La aplicación rechaza PythonBridgeV6.
 5. Pulse Iniciar video con la URL real comprobada, incluido su puerto y ruta. La dirección prevista de cámara es `192.168.4.1`; no hay URL ni puerto supuestos en la configuración inicial.
 6. Sin armar, compruebe STOP y estado desarmado. Complete pruebas de red, caducidad y alimentación del plan. Solo el operador podrá autorizar después el armado y las pruebas individuales.
 
-No cargar firmware, mover ruedas ni activar servos automáticamente. El firmware original del ZIP tiene credenciales vacías de forma intencional; debe configurarlo y compilarlo el operador en su copia privada. Su fuente sin cambios está en `firmware/`; no se compiló ni cargó desde esta sesión.
+Este procedimiento queda condicionado a resolver primero las incidencias de alimentación/arranque y seguir el plan físico actualizado. No cargar firmware, mover ruedas ni activar servos automáticamente. El firmware original del ZIP tiene credenciales vacías intencionalmente y conserva el SSID histórico sin guion; su fuente sin cambios está en `firmware/`. Para una preparación futura, trabaje sobre una copia privada ignorada, no introduzca claves en el sketch rastreado. La fuente exacta del binario instalado no se recuperó en esta consolidación; no se compiló ni cargó firmware.
 
 ## Configuración y datos
 
@@ -65,11 +93,14 @@ Las mediciones de desplazamiento se introducen después de una prueba manual, co
 ## Verificación
 
 ```powershell
+.\.venv\Scripts\python.exe scripts\check_software.py
 .\.venv\Scripts\python.exe -m unittest discover -s tests -v
 .\.venv\Scripts\python.exe main.py --smoke-ui
 .\.venv\Scripts\python.exe tests\ui_validate.py
 .\.venv\Scripts\python.exe tests\ui_redesign_validate.py
 ```
+
+`scripts/check_software.py` ejecuta la suite existente con un cerco adicional: solo permite loopback para las pruebas de HTTP y bloquea abrir la cámara física. No modifica `config.local.json`. Los resultados quedan en `evidencias/software_checks/`. Para ejecutarlo en este proyecto necesita el entorno gráfico requerido por las pruebas Tk. La referencia histórica fue de 50 pruebas; los resultados actuales y cualquier fallo corregido se detallan en [el informe](docs/CONSOLIDACION_FASE02_1.md).
 
 Las pruebas gráficas requieren escritorio: `ui_validate.py` conserva el chequeo original; `ui_redesign_validate.py` añade recortes verticales/horizontales, 1280×720, 1366×768, 1600×900 y 1920×1080 con comprobación de tamaño efectivamente aplicado, categorías de formularios, escalados tipográficos virtuales y STOP simulado. Guarda evidencia en `evidencias/ui_fase01_1/`. Los frames sintéticos se usan solo en pruebas y nunca como datos del robot real.
 
@@ -103,4 +134,18 @@ Dependencias directas verificadas: OpenCV contrib 4.12.0.88, NumPy 2.2.6, Pillow
 
 Referencias: [Python 3.12.10 oficial](https://www.python.org/downloads/release/python-31210/), [distribución OpenCV contrib](https://pypi.org/project/opencv-contrib-python/4.12.0.88/). El contrato se deriva del sketch y LEEME originales, no de documentación web genérica.
 
-Consulte [arquitectura](docs/ARQUITECTURA.md), [contrato API](docs/CONTRATO_API.md), [validación de software](docs/VALIDACION_FASE01.md) y la bitácora histórica. La siguiente puerta es la validación física controlada de esta infraestructura. La Fase 02 requiere autorización nueva.
+Consulte [arquitectura](docs/ARQUITECTURA.md), [contrato API](docs/CONTRATO_API.md), [validación histórica de software](docs/VALIDACION_FASE01.md), [plan de pruebas físicas](docs/PLAN_DE_PRUEBAS_FISICAS.md) y [bitácora](ESTADO_PROYECTO_ROBOT_INTELIGENTE.md). La siguiente puerta física exige resolver alimentación y giro al encender; la siguiente implementación, Fase 03, requiere nuevas instrucciones.
+
+## Repositorio y revisión externa
+
+Repositorio existente: [nata23-dev/RobotInteligente4WD](https://github.com/nata23-dev/RobotInteligente4WD), rama estable `main`. El propietario autorizó expresamente conservarlo **público** durante esta consolidación, sustituyendo el requisito inicial de privado. No se conceden permisos de aplicaciones externas ni se publican las ramas locales indiscriminadamente.
+
+Se versionan código, plantillas, pruebas y documentación. `.venv/`, `.runtime/`, `.tools/`, referencias originales, configuraciones privadas, `.env`, claves locales, logs, datasets/modelos pesados y evidencias privadas quedan locales. La configuración de ejemplo usa simulación y una clave vacía. No publique `config.local.json`, `ui.local.json` ni copias del firmware con contraseñas. El informe de auditoría explica las limitaciones; no se afirma ausencia universal de secretos desconocidos.
+
+Auditoría reproducible de contenido, índice e historial, sin mostrar valores sensibles:
+
+```powershell
+.\.venv\Scripts\python.exe scripts\audit_publication.py
+```
+
+Se complementa con Gitleaks y revisión de rutas/plantillas. Las capturas enlazadas en informes históricos permanecen locales y por eso no están disponibles desde un clon remoto; sus resultados y condiciones sí están documentados. La siguiente implementación es la Fase 03 únicamente cuando el propietario la autorice; la autonomía física sigue bloqueada por las incidencias abiertas.

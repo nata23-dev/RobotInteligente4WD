@@ -428,3 +428,58 @@ Línea base: 50/50 pruebas aprobadas antes del cambio. Suite final ampliada: 62/
 Evidencias inspeccionadas: cuatro pantallas actuales y cuatro del commit 68ebbe0, logs de checks y JSON de layouts en evidencias/ui_fase01_1/, excluidos de Git. Se usa captura nativa de la ventana propia para no incluir otras aplicaciones del escritorio. Se corrigieron recortes verticales de IA, meta fuera de panel, flechas pequeñas, scrollbars innecesarias, contraste insuficiente y callbacks after pendientes al cerrar. Registro y telemetría incrementales; salud/video 80 ms y telemetría visual aproximadamente 240 ms. Lectura de manifiesto, thumbnails y preferencias en el trabajador de archivos existente.
 
 Cierre: rediseño validado localmente con simulador. No hay evidencia nueva física ni IA implementada. Firmware y originales sin modificar; configuración privada y preferencias visuales fuera de Git. Commit local de la rama después de checks y auditoría; consultar git log -1. Próximo paso: revisión del operador de la interfaz y puerta física F01–F03 sin movimiento, manteniendo Fase 02 bloqueada hasta autorización.
+
+
+## 16. Fase 02 / 02.1 — Consolidación y avances físicos reportados (24/11/2026)
+
+Registro de continuidad v1.7. Se preserva todo el historial anterior. Las observaciones siguientes provienen del operador y de la solicitud de consolidación, salvo verificaciones locales expresamente indicadas. No se contactó al robot ni ESP32-CAM físicos ni se activaron actuadores en esta sesión. Robot temporalmente fuera de servicio; Fase 03 no iniciada.
+
+### Firmware, red y cámara — reporte del operador
+
+Firmware Robot4WD 1.0.0/API 1 compilado e instalado correctamente por el operador, con arranque inicialmente desarmado. Nombre de red corregido: ESP32-CAM-CARRO (con guion). Principal en Robot4WD_Diagnostico para diagnóstico. Comunicación inalámbrica entre ambos ESP32 y HTTP autenticado confirmados según operador; aplicación Python conectada al hardware real. DHCP principal observado 192.168.4.2, cámara 192.168.4.1 y diagnóstico 192.168.10.1. La dirección DHCP no se garantiza permanente.
+
+MJPEG reportado en http://192.168.4.1:81/stream; video recibido en Python simultáneamente con control. Resolución observada 320x240 y aproximadamente 10–12 FPS. Orientación incorrecta cercana a 90° y calidad insuficiente todavía para detección confiable de figuras pequeñas. Pendiente evaluar resolución real, luz, enfoque/nitidez, contraste, saturación, JPEG y ajustes que admita el firmware de cámara. No se asumieron endpoints ni autofocus por el solo modelo OV5640.
+
+El operador comunicó timeout 0.30 s y heartbeat 0.25 s, con p95 HTTP 32–47 ms en algunas pruebas estables. La lectura local actual confirmó URLs correspondientes y heartbeat 0.25 s, pero timeout persistido 0.18 s. Se registró la diferencia sin modificar configuración ni clave. Varias desconexiones fueron deliberadas por cambios de Wi-Fi para compartir capturas; no contar todos los errores acumulados como fallos espontáneos.
+
+### Seguridad y ruedas — alcance parcial
+
+Operador verificó armado explícito a nivel lógico, sesión autorizada, STOP GLOBAL e invalidación de sesión mediante estado de la aplicación. Tras interrumpir Wi-Fi reportó reconexión con firmware desarmado. Siguen pendientes medición exacta de caducidad, parada física bajo movimiento y cierre formal de detención automática; un estado lógico no es una prueba física completa.
+
+Ruedas individuales reportadas: FL -1 adelante / +1 atrás, ambos pendientes de confirmación por ambigüedad verbal; FR -1 atrás / +1 adelante; RL -1 adelante / +1 atrás; RR -1 atrás / +1 adelante. Adelante provisional FL=-1, FR=+1, RL=-1, RR=+1; atrás FL=+1, FR=-1, RL=+1, RR=-1. Los patrones locales ya coinciden con esos signos; no se modificaron. Validación de ocho sentidos y finalización automática pendiente.
+
+### Alimentación y arranque — incidencias prioritarias
+
+Durante las pruebas del operador desaparecieron ambas redes Wi-Fi, con LED del ESP32 encendido. Una rueda que suele girar brevemente al encender mostró muy poca potencia, giró lentamente y se detuvo. Baterías aproximadamente una semana sin uso. Hipótesis principal: descarga/caída de voltaje; alternativas: regulación insuficiente, alimentación compartida, conexiones deficientes o reinicios. No hay mediciones eléctricas que confirmen causa. El operador cargará baterías antes de retomar pruebas físicas.
+
+El giro inesperado de una rueda desde el encendido, antes de usar la aplicación, es una incidencia de seguridad prioritaria. Estados transitorios de GPIO, strapping, entradas L298N sin nivel definido, ENA/ENB permanentemente habilitados y secuencia de alimentación son causas posibles sin confirmar. La solución deberá mantener motores detenidos desde energización, antes de terminar setup(). No se implementaron cambios eléctricos ni firmware. Autonomía no autorizada hasta resolverlo y verificarlo físicamente.
+
+Brazo: validación física, calibración definitiva, agarre, transporte y depósito pendientes. Se mantienen pines, límites y configuraciones existentes.
+
+### Auditoría y consolidación local
+
+Inicial: árbol limpio, main=68ebbe0 y ui/fase-01-1=46e20f8, sin tags ni remoto. La versión más completa era la rama visual. Se configuró origin al repositorio existente nata23-dev/RobotInteligente4WD y se comprobó que no había ramas/commits remotos iniciales. main avanzó por fast-forward a 46e20f8, sin reescribir ni borrar historial. Bundle y copias locales privadas preservados en .tools/backups/. Configuración actual intacta; copia histórica de firmware de Documentos preservada, pero no coincide con SSID/clave actuales y no se afirma que sea la fuente del binario instalado. Firmware rastreado sigue siendo distribución original con credenciales vacías; no se modificó ni cargó.
+
+GitHub informó PUBLIC cuando la solicitud inicial exigía PRIVATE; se detuvo publicación y se informó. El propietario indicó después “Dejemoslo publico”. Se conserva PUBLIC por esa instrucción, sin cambiar visibilidad ni crear otro repositorio. No se solicitan tokens. Git 2.53.0.windows.1 y Credential Manager con cuenta nata23-dev disponibles; gh ausente. Metadatos GitHub confirmaron push/admin y dry-run confirmó transporte con escritura. Un endpoint específico de colaboradores devolvió 403 por alcance de integración, sin impedir las verificaciones alternativas. No se conceden permisos de apps externas.
+
+Gitleaks 8.30.1 portátil del repositorio oficial, SHA-256 de descarga verificado; cero detecciones iniciales sobre los dos commits. Auditor específico scripts/audit_publication.py revisa referencias/blobs alcanzables, metadatos, índice y árbol publicable contra credenciales locales conocidas y rutas privadas, sin imprimir valores. Se complementan las herramientas, no se garantiza ausencia universal de secretos desconocidos. .gitignore amplía exclusiones de .env, secretos locales, claves/certificados, compilados, cachés/builds/editor; conserva plantillas y todo archivo local. Logs/capturas/ZIPs/configuraciones/entornos/dataset/modelos privados no se publican. Se repite revisión de staging e historial antes de push, solo main y sin force.
+
+### Pruebas reales de software de esta consolidación
+
+Primera corrida: 62 ejecutadas, 61 aprobadas, 1 fallida, 0 errores/omitidas, 15.484 s. Falló test_controller_failure_does_not_renew_forever porque “confirmada” también coincide con “no confirmada”: la prueba podía adelantarse al hilo STOP. Se fortaleció la espera al estado exacto Parada confirmada (estado lógico), conservando la aserción remota. Sin cambios de controlador ni debilitamiento de límites/tiempos. Segunda corrida: 62/62 en 14.906 s. Tras tres pruebas nuevas del auditor, 65 ejecutadas, 65 aprobadas, 0 fallos/errores/omitidas, 17.094 s.
+
+scripts/check_software.py ejecuta unittest con red solo loopback y cámara física bloqueada; no modifica configuración. Nuevas pruebas usan secretos sintéticos en repositorios temporales para detectar historial codificado pese a limpieza del archivo actual, staging distinto de worktree y rutas privadas/plantillas, sin filtrar valores en informes. Cuatro secciones de la UI clara verificadas, STOP simulado, sin solicitudes al inicio. compileall, pip check y INICIAR_APLICACION.bat --smoke-ui correctos. Instalador e inicio revisados; dependencias sin cambios, sin pip global. Evidencias previas conservadas; informes, primer fallo y nuevas capturas en evidencias/consolidacion_2026_11_24/, ignorados por Git.
+
+### Estado de fases y próxima implementación
+
+Fase 01: infraestructura funcional y validación local. Fase 01.1: rediseño claro funcional. Fase 02: enlace y pruebas físicas iniciales reportadas, sin aceptación formal completa ni nuevo commit funcional independiente. Fase 02.1: consolidación, documentación y auditoría; publicación de main tras satisfacer condiciones. Resultado de sincronización se registra después del push. Pantalla Automático actual conservada; no se implementa rediseño nuevo ni IA.
+
+Plan Fase 03.1: investigar firmware de ESP32-CAM y capacidades realmente expuestas; evaluar VGA real 640x480, JPEG/FPS/latencia, orientación 0/90/180/270, iluminación, enfoque/nitidez, brillo/contraste/saturación y exposición/balance si existen. No confundir ampliar píxeles con resolución real; separar original, transformaciones y overlays, descartar frames viejos.
+
+Plan Fase 03.2: único visor protagonista 70–75 % cuando sea viable, original/procesada/máscara, ampliación/pantalla completa manteniendo aspecto y STOP; sin duplicaciones ni controles redundantes, diagnóstico secundario. Mostrar datos contextuales reales de figura/color/CNN/confianza/destino/acción/decisión/ciclo/conteo/conexión/permiso/alertas; módulos pendientes explícitos y autonomía bloqueada.
+
+Plan Fase 03.3: HSV, colores, morfología, contornos, centroides, cajas, error lateral, área/proximidad relativas, selección/seguimiento, región de agarre y ArUco DICT_4X4_50 (0 cubos, 1 cilindros, 2 prismas triangulares). Plan Fase 03.4: captura individual/ráfagas, etiquetas/sesiones/metadatos, preview/calidad/ROI/duplicados y separación por sesiones antes de aumentos; meta inicial ajustable alrededor de 450 originales balanceados de cámara real. Nada de esto se declara implementado en esta consolidación.
+
+Documentos: README actualizado, docs/CONSOLIDACION_FASE02_1.md y docs/PLAN_FASE03.md; plan físico actualizado sin borrar historia. Próximo paso: revisión externa del código consolidado; operador resuelve alimentación y movimiento al encender, confirma FL/seguridad/cámara/brazo. Preparado para planificar Fase 03, no para autonomía física ni para comenzar su implementación sin nuevas instrucciones.
+
+Regresión final previa al commit de consolidación: 65/65, cero fallos/errores/omisiones, 16.797 s. Aplicación, interfaz, comunicación, seguridad, firmware, requisitos e instaladores intactos frente a 46e20f8; única corrección existente en la espera estricta de una prueba. git fsck sin corrupción; blobs sueltos no alcanzables conservados, sin purgar ni publicar.

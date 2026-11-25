@@ -63,7 +63,9 @@ class DispatcherTests(unittest.TestCase):
     def test_controller_failure_does_not_renew_forever(self):
         self.arm()
         until(lambda: not self.d.safety.session, timeout=1.5)
-        until(lambda: 'confirmada' in self.d.safety.status)
+        # "no confirmada" también contiene "confirmada": esperar el estado
+        # positivo exacto antes de comprobar el STOP remoto evita una carrera.
+        until(lambda: self.d.safety.status == 'Parada confirmada (estado lógico)')
         self.assertFalse(self.sim.request('state')['armed'])
 
     def test_stop_cancels_pending_and_latches(self):

@@ -2,6 +2,8 @@
 
 Fecha de preparación: 24/11/2026. **Todas las pruebas de esta lista están pendientes.** Ejecuta el operador, nunca el desarrollo automatizado. El software se validó con simulador y loopback; no demuestra resultados del robot real. No continuar a autonomía ni Fase 02 sin autorización.
 
+**Actualización de consolidación del 24/11/2026:** el párrafo anterior describe el estado al preparar este plan. El operador reportó después firmware instalado, enlace HTTP/video, estados lógicos de armado/STOP y sentidos parciales de ruedas; se registran en la sección 16 de la bitácora. No cierran formalmente las pruebas de seguridad física. Antes de continuar, resolver la pérdida de alimentación/red y el giro inesperado desde energización. No ejecutar pruebas de movimiento en esta consolidación; la siguiente fase de implementación es la 03, todavía sin autorización.
+
 ## Preparación y registro
 
 Ruedas suspendidas de forma estable, brazo y carga apoyados, zona despejada, operador con acceso al interruptor físico. Confirmar polaridad, baterías, capacidad de la fuente regulada de servos, tierra común y ausencia de realimentación entre USB y fuentes. Verificar especificaciones del montaje real: no aplicar batería 2S directamente a un servo que no la admita ni alimentarlo desde 3V3. Comprobar jumpers ENA/ENB; no hay control PWM de velocidad. No conectar/desconectar mecanismos energizados. Detener y cortar energía ante ruido, atasco, reinicio, calentamiento anormal o pérdida de control.
