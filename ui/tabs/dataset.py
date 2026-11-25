@@ -7,6 +7,7 @@ from dataset.capture import SHAPES, COLORS
 from ui.dataset_view import dataset_summary
 from ui.preferences import load_goal, save_goal
 from ui.components.widgets import Card, Metric, Video, label, button, set_value
+from app.models import Frame
 
 NAMES = {
     "cubo": "Cubos",
@@ -58,6 +59,8 @@ class DatasetTab(ttk.Frame):
         self.shape = tk.StringVar(value=SHAPES[0])
         self.color = tk.StringVar(value=COLORS[0])
         self.session = tk.StringVar(value="sesion_01")
+        for variable in (self.shape, self.color, self.session):
+            variable.trace_add("write", lambda *_: self.check_burst_labels())
         for i, (name, var, choices) in enumerate(
             (
                 ("Forma", self.shape, SHAPES),
@@ -98,8 +101,14 @@ class DatasetTab(ttk.Frame):
             style="Primary.TButton",
         )
         self.capture_button.pack(side="left", fill="x", expand=True, padx=(0, 8))
-        self.burst = button(row, "Ráfaga · pendiente", state="disabled")
+        self.burst = button(row, "Ráfaga", self.burst_dialog, state="disabled")
         self.burst.pack(side="left")
+        button(row, "Herramientas", self.tools_dialog, style="Compact.TButton").pack(
+            side="left", padx=(4, 0)
+        )
+        self.burst_labels = None
+        self.burst_message = tk.StringVar(value="Ráfaga inactiva")
+        self.quality_message = tk.StringVar(value="Sin evaluación de calidad")
         distribution = Card(right, "Distribución del dataset", "dataset", padding=10)
         distribution.grid(row=1, column=0, sticky="nsew")
         self.progress = {}
@@ -188,3 +197,168 @@ class DatasetTab(ttk.Frame):
 
     def show_saved(self, path, counts):
         self.request_summary()
+
+    def update_video(self, snap):
+        r = self.app.vision.snapshot()["result"]
+        if r and snap["fresh"]:
+            import time
+
+            frame = Frame(
+                r.frame.id,
+                r.frame.received_at,
+                r.normalized,
+                r.frame.fps,
+                r.frame.generation,
+                r.frame.source,
+            )
+            self.video.update_frame(
+                dict(snap, frame=frame, age_s=time.monotonic() - frame.received_at)
+            )
+            h,w=r.frame.image.shape[:2]
+            set_value(self.video.metrics,f'Recibida {w} × {h} · Vista {frame.image.shape[1]} × {frame.image.shape[0]} · {frame.fps:.1f} FPS · {frame.source}')
+        else:
+            self.video.update_frame(dict(snap, frame=None, fresh=False))
+
+    def dialog(self, title):
+        dialog = tk.Toplevel(self)
+        dialog.title(title)
+        dialog.geometry("720x560")
+        dialog.minsize(640, 450)
+        dialog.columnconfigure(0, weight=1)
+        dialog.rowconfigure(1, weight=1)
+        bar = ttk.Frame(dialog, padding=10)
+        bar.grid(row=0, column=0, sticky="ew")
+        label(bar, title, style="PageTitle.TLabel").pack(side="left")
+        button(
+            bar,
+            "STOP GLOBAL",
+            lambda: self.app.dispatcher.stop(),
+            style="Danger.TButton",
+        ).pack(side="right")
+        dialog.bind("<Escape>", lambda e: self.app.dispatcher.stop())
+        body = ttk.Frame(dialog, padding=12)
+        body.grid(row=1, column=0, sticky="nsew")
+        return dialog, body
+
+    def burst_dialog(self):
+        dialog, body = self.dialog("Captura por ráfagas")
+        options = self.app.config["dataset_options"]
+        self.burst_count = tk.StringVar(value=str(options["burst_count"]))
+        self.burst_interval = tk.StringVar(value=str(options["burst_interval_s"]))
+        label(
+            body,
+            "Usará las etiquetas actuales. Cada muestra requiere un frame nuevo y fresco.\nEl armado, movimiento, cambio de etiquetas, pérdida de cámara o cierre cancelan la ráfaga.",
+            wraplength=650,
+        ).pack(anchor="w", pady=8)
+        label(body, "Cantidad (1–100)").pack(anchor="w")
+        ttk.Entry(body, textvariable=self.burst_count, width=12).pack(anchor="w")
+        label(body, "Intervalo en segundos (0.2–60)").pack(anchor="w", pady=(8, 0))
+        ttk.Entry(body, textvariable=self.burst_interval, width=12).pack(anchor="w")
+
+        def start():
+            labels = (self.shape.get(), self.color.get(), self.session.get())
+            self.app.start_burst(
+                *labels, int(self.burst_count.get()), float(self.burst_interval.get())
+            )
+            self.burst_labels = labels
+
+        button(
+            body,
+            "Iniciar ráfaga",
+            lambda: self.winfo_toplevel().run(start),
+            style="Primary.TButton",
+        ).pack(anchor="w", pady=12)
+        button(body, "Cancelar ráfaga", lambda: self.app.job(self.app.burst.stop)).pack(
+            anchor="w"
+        )
+        label(body, textvariable=self.burst_message, wraplength=650).pack(
+            anchor="w", pady=8
+        )
+        label(body, textvariable=self.quality_message, wraplength=650).pack(anchor="w")
+
+        def close():
+            self.app.burst.cancel.set()
+            dialog.destroy()
+
+        dialog.protocol("WM_DELETE_WINDOW", close)
+
+    def check_burst_labels(self):
+        if (
+            self.app.burst.running
+            and self.burst_labels
+            and self.burst_labels
+            != (self.shape.get(), self.color.get(), self.session.get())
+        ):
+            self.app.burst.cancel.set()
+
+    def burst_status(self, payload):
+        set_value(
+            self.burst_message,
+            f'{payload["saved"]}/{payload["total"]} · {payload["reason"]}',
+        )
+        if payload["done"]:
+            self.burst_labels = None
+
+    def quality_status(self, payload):
+        set_value(
+            self.quality_message,
+            f'Brillo {payload["brightness_mean"]:.1f} · Nitidez {payload["sharpness_laplacian"]:.1f}\n'
+            + (
+                "; ".join(payload["warnings"])
+                or "Sin advertencias del perfil provisional"
+            ),
+        )
+
+    def tools_dialog(self):
+        dialog, body = self.dialog("Revisión y sesiones")
+        label(
+            body,
+            "Las advertencias no eliminan originales. Los umbrales se ajustan en Configuración.\nLa división requiere al menos tres sesiones balanceadas e independientes.",
+            wraplength=650,
+        ).pack(anchor="w", pady=6)
+        row = ttk.Frame(body)
+        row.pack(fill="x")
+
+        def review():
+            from dataset.tools import review
+
+            root = self.app.dataset.root
+            self.app.job(lambda: self.app.event("dataset_review", review(root)))
+
+        def split():
+            from dataset.tools import split_sessions
+
+            root = self.app.dataset.root
+
+            def task():
+                result = split_sessions(root)
+                self.app.event(
+                    "info",
+                    f'División guardada por {len(result["sessions"])} sesiones en metadata/split_sessions.json',
+                )
+
+            self.app.job(task)
+
+        button(row, "Revisar calidad y recortes", review).pack(side="left", padx=(0, 8))
+        button(row, "Preparar división 70/15/15", split).pack(side="left")
+        self.review_text = tk.Text(body, wrap="word", font=("Consolas", 9), height=16)
+        self.review_text.pack(fill="both", expand=True, pady=8)
+        review()
+
+    def show_review(self, rows):
+        widget = getattr(self, "review_text", None)
+        if widget is None or not widget.winfo_exists():
+            return
+        widget.delete("1.0", "end")
+        for r in rows:
+            widget.insert(
+                "end",
+                f'{r["original"]}\n{r["shape"]}/{r["color"]} · {r["session"]} · {r["source"]} · revisión {r["review"]}\nRecorte: {r.get("crop")} / ROI {r.get("roi")}\n'
+                + ("; ".join(r["quality"]["warnings"]) or "Sin advertencias")
+                + "\n\n",
+            )
+        if not rows:
+            widget.insert(
+                "end",
+                "No hay registros de calidad. Los originales anteriores siguen en el manifiesto CSV.",
+            )

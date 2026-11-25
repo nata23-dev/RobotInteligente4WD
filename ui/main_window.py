@@ -34,7 +34,7 @@ class MainWindow(tk.Tk):
         self.app = app
         self.closing = False
         self.last_telemetry = 0.0
-        self.title("Robot Inteligente 4WD | Fase 01.1")
+        self.title("Robot Inteligente 4WD | Fase 03")
         self.geometry(
             f"{min(1366,self.winfo_screenwidth()-24)}x{min(820,self.winfo_screenheight()-90)}"
         )
@@ -90,11 +90,11 @@ class MainWindow(tk.Tk):
         self.connection = Badge(lower, "●  Sin verificar")
         self.connection.pack(anchor="w", pady=(0, 12))
         label(
-            lower, "FASE 01.1", font=("Segoe UI", 9, "bold"), foreground=theme.BLUE
+            lower, "FASE 03", font=("Segoe UI", 9, "bold"), foreground=theme.BLUE
         ).pack(anchor="w")
         label(
             lower,
-            "Infraestructura local\nValidación física pendiente",
+            "Percepción visual\nValidación física pendiente",
             style="Muted.TLabel",
         ).pack(anchor="w", pady=(4, 0))
         label(lower, "Alt 1–4 · Esc: STOP", style="Muted.TLabel").pack(
@@ -204,9 +204,11 @@ class MainWindow(tk.Tk):
         cam = self.app.camera.snapshot()
         selected = self.tabs.index("current")
         if selected == 0:
-            self.auto.video.update_frame(cam)
+            self.auto.update_video(cam)
         elif selected == 2:
-            self.dataset.video.update_frame(cam)
+            self.dataset.update_video(cam)
+        elif selected == 3:
+            self.config_tab.vision_panel.refresh()
         if now - self.last_telemetry >= 0.24:
             self._telemetry(cam)
             self.last_telemetry = now
@@ -217,6 +219,18 @@ class MainWindow(tk.Tk):
                 break
             if kind == "dataset_summary":
                 self.dataset.apply_summary(payload)
+                continue
+            if kind == "vision_preview":
+                self.config_tab.vision_panel.apply_preview(payload)
+                continue
+            if kind == "burst":
+                self.dataset.burst_status(payload)
+                continue
+            if kind == "quality":
+                self.dataset.quality_status(payload)
+                continue
+            if kind == "dataset_review":
+                self.dataset.show_review(payload)
                 continue
             if kind == "ui_goal":
                 self.dataset.apply_goal(payload)
@@ -303,7 +317,14 @@ class MainWindow(tk.Tk):
         self.dataset.capture_button.state(
             ["!disabled"] if can_capture else ["disabled"]
         )
+        self.dataset.burst.state(
+            ["!disabled"]
+            if can_capture and not self.app.burst.running
+            else ["disabled"]
+        )
+        self.dataset.check_burst_labels()
         fps = f'{cam["frame"].fps:.1f}' if cam["fresh"] else "—"
+        resolution = f'{cam["frame"].image.shape[1]}×{cam["frame"].image.shape[0]}' if cam['fresh'] else '—'
         p95 = "—" if metrics["p95"] is None else f'{metrics["p95"]:.1f}'
         firmware_state = (
             "—"
@@ -314,7 +335,7 @@ class MainWindow(tk.Tk):
             s["mode"]
         ]
         text = (
-            f'{"Simulador" if sim else "ESP32"}: {"verificado" if s["connected"] else "sin verificar"}  ·  Cámara: {cam["status"]}  ·  Modo: {mode}\nFW {d.health.get("version","—")} / API {d.health.get("api_version","—")} · {firmware_state}  ·  FPS {fps}  ·  p95 {p95} ms'
+            f'{"Simulador" if sim else "ESP32"}: {"verificado" if s["connected"] else "sin verificar"}  ·  Cámara: {cam["status"]}  ·  Modo: {mode}\nFW {d.health.get("version","—")} / API {d.health.get("api_version","—")} · {firmware_state}  ·  {resolution} / {fps} FPS  ·  p95 {p95} ms'
             + (" (sim.)" if sim else "")
             + f'  ·  Errores {metrics["errors"]}'
         )

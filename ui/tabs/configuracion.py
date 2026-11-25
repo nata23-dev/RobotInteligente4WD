@@ -98,7 +98,13 @@ class ConfigTab(ttk.Frame):
             self.types[path] = kind
             entry = (
                 ttk.Checkbutton(
-                    form, variable=var, text="Simulación (desmarcar para hardware real)"
+                    form,
+                    variable=var,
+                    text=(
+                        "Simulación (desmarcar para hardware real)"
+                        if path == "simulation"
+                        else "Activar"
+                    ),
                 )
                 if kind is bool
                 else ttk.Entry(
@@ -261,17 +267,9 @@ class ConfigTab(ttk.Frame):
                 ("dataset_dir", "Directorio del dataset", str),
             ],
         )
-        label(p, "HSV y regiones de interés", font=("Segoe UI", 12, "bold")).pack(
-            anchor="w", pady=(16, 4)
-        )
-        label(
-            p,
-            "Pendientes de implementación y calibración con cámara real.",
-            style="Muted.TLabel",
-        ).pack(anchor="w")
-        button(p, "Editar HSV / ROI · pendiente", state="disabled").pack(
-            anchor="w", pady=8
-        )
+        from ui.vision_panel import VisionPanel
+
+        self.vision_panel = VisionPanel(self)
 
     def build_ai(self):
         p = self.section("Inteligencia artificial", "Módulos de decisión", "brain")
@@ -307,7 +305,7 @@ class ConfigTab(ttk.Frame):
             Badge(row, f"ID {value}", "primary").pack(side="right")
         label(
             p,
-            "Contrato fijado para esta fase. Detección y navegación pendientes.",
+            "Detección visual implementada. Navegación bloqueada. Marcadores: docs/recursos/estaciones_aruco.pdf (imprimir al 100 %).",
             style="Muted.TLabel",
             wraplength=600,
         ).pack(anchor="w", pady=12)
@@ -320,6 +318,27 @@ class ConfigTab(ttk.Frame):
             "Mantenimiento", "Seguridad, registros y diagnóstico", "shield"
         )
         self.form(p, [("controller_lease_s", "Salud del controlador (s)", float)])
+        p_options = self.section(
+            "Mantenimiento", "Dataset · umbrales provisionales y ráfagas", "dataset"
+        )
+        self.form(
+            p_options,
+            [
+                (f"dataset_options.{k}", title, kind)
+                for k, title, kind in [
+                    ("burst_count", "Cantidad de ráfaga", int),
+                    ("burst_interval_s", "Intervalo (s)", float),
+                    ("min_width", "Ancho mínimo recomendado", int),
+                    ("min_height", "Alto mínimo recomendado", int),
+                    ("dark_mean", "Brillo mínimo", float),
+                    ("bright_mean", "Brillo máximo", float),
+                    ("min_sharpness", "Varianza Laplaciano mínima", float),
+                    ("min_object_ratio", "Área relativa mínima", float),
+                    ("similarity_distance", "Distancia dHash (0–64)", int),
+                    ("reject_exact_duplicates", "Rechazar duplicados exactos", bool),
+                ]
+            ],
+        )
         self.performance = tk.StringVar(value="Métricas sin muestras")
         label(
             p, textvariable=self.performance, style="Muted.TLabel", wraplength=600
@@ -348,7 +367,7 @@ class ConfigTab(ttk.Frame):
         for path, var in self.fields.items():
             value = config
             for key in path.split("."):
-                value = value[key]
+                value = value[int(key) if isinstance(value, list) else key]
             var.set(value)
         self.show_pattern()
         self.loading = False
@@ -381,8 +400,8 @@ class ConfigTab(ttk.Frame):
             obj = config
             keys = path.split(".")
             for key in keys[:-1]:
-                obj = obj[key]
-            obj[keys[-1]] = value
+                obj = obj[int(key) if isinstance(obj, list) else key]
+            obj[int(keys[-1]) if isinstance(obj, list) else keys[-1]] = value
         return validate(config)
 
     def save(self):

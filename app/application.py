@@ -1,4 +1,5 @@
 """Composición y tareas de disco/ciclo de vida fuera del hilo de Tkinter."""
+
 import copy
 import csv
 from datetime import datetime
@@ -20,11 +21,14 @@ from dataset.burst import Burst
 
 
 def setup_logging():
-    (ROOT / 'logs').mkdir(exist_ok=True)
+    (ROOT / "logs").mkdir(exist_ok=True)
     records = queue.Queue(maxsize=2000)
-    handler = RotatingFileHandler(ROOT / 'logs' / 'robot.log', maxBytes=1_000_000,
-                                 backupCount=3, encoding='utf-8')
-    handler.setFormatter(logging.Formatter('%(asctime)s %(levelname)s %(name)s %(message)s'))
+    handler = RotatingFileHandler(
+        ROOT / "logs" / "robot.log", maxBytes=1_000_000, backupCount=3, encoding="utf-8"
+    )
+    handler.setFormatter(
+        logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s")
+    )
     root = logging.getLogger()
     root.setLevel(logging.INFO)
     root.addHandler(QueueHandler(records))
@@ -37,21 +41,24 @@ class Application:
     def __init__(self, simulation=None):
         self.config = load()
         if simulation is not None:
-            self.config['simulation'] = simulation
+            self.config["simulation"] = simulation
         self.events = queue.Queue(maxsize=100)
         self.jobs = queue.Queue(maxsize=8)
         self.closing = threading.Event()
         self.operation_lock = threading.Lock()
+        self.capture_lock = threading.Lock()
         self.reconfiguring = False
         self.closed = False
         self.close_error = None
         self._compose()
-        self.worker = threading.Thread(target=self._jobs, name='archivos-y-ciclo', daemon=True)
+        self.worker = threading.Thread(
+            target=self._jobs, name="archivos-y-ciclo", daemon=True
+        )
         self.worker.start()
 
     def _compose(self):
         c = copy.deepcopy(self.config)
-        if c['simulation']:
+        if c["simulation"]:
             bridge = stop_bridge = Simulator()
         else:
             bridge, stop_bridge = HTTPBridge(c), HTTPBridge(c)
@@ -60,9 +67,13 @@ class Application:
         self.camera = Camera(c)
         self.vision = VisionWorker(self.camera, c)
         self.vision.start()
-        destination = Path(c['dataset_dir'])
-        self.dataset = DatasetCapture(destination if destination.is_absolute() else ROOT / destination)
-        self.burst = Burst(self.camera.snapshot, self._capture_now, self.capture_guard, self.event)
+        destination = Path(c["dataset_dir"])
+        self.dataset = DatasetCapture(
+            destination if destination.is_absolute() else ROOT / destination
+        )
+        self.burst = Burst(
+            self.camera.snapshot, self._capture_now, self.capture_guard, self.event
+        )
         self.dispatcher.start()
 
     def event(self, kind, payload):
@@ -77,17 +88,17 @@ class Application:
 
     def job(self, fn, internal=False):
         if self.closing.is_set() or (self.reconfiguring and not internal):
-            self.event('info', 'Tarea descartada durante cierre o configuración')
+            self.event("info", "Tarea descartada durante cierre o configuración")
             return
         try:
             self.jobs.put_nowait(fn)
         except queue.Full:
-            self.event('error', 'Hay demasiadas tareas pendientes')
+            self.event("error", "Hay demasiadas tareas pendientes")
 
     def _jobs(self):
         while not self.closing.is_set():
             try:
-                fn = self.jobs.get(timeout=.1)
+                fn = self.jobs.get(timeout=0.1)
             except queue.Empty:
                 continue
             try:
@@ -95,33 +106,51 @@ class Application:
                     if not self.closing.is_set():
                         fn()
             except Exception as exc:
-                self.event('error', str(exc))
+                self.event("error", str(exc))
 
     def command(self, action, params=None):
         if self.reconfiguring or self.closing.is_set():
-            self.event('error', 'Aplicación cambiando configuración o cerrando')
+            self.event("error", "Aplicación cambiando configuración o cerrando")
             return
-        future = self.dispatcher.submit(Command(action, params or {}))
+        if action == 'arm':
+            if not self.capture_lock.acquire(blocking=False):
+                self.event('error','Espere a que termine la captura antes de armar')
+                return
+            try:
+                future = self.dispatcher.submit(Command(action, params or {}))
+            finally:
+                self.capture_lock.release()
+        else:
+            future = self.dispatcher.submit(Command(action, params or {}))
+
         def done(f):
             if f.cancelled():
-                self.event('info', 'Orden cancelada por seguridad')
+                self.event("info", "Orden cancelada por seguridad")
                 return
             try:
                 f.result()
-                self.event('info', action + ': completado (respuesta lógica)')
+                self.event("info", action + ": completado (respuesta lógica)")
             except Exception as exc:
-                self.event('error', str(exc))
+                self.event("error", str(exc))
+
         future.add_done_callback(done)
 
     def update_config(self, config):
         new = validate(config)
         with self.dispatcher.safety.lock:
-            if self.dispatcher.safety.session or self.dispatcher.state.get('armed'):
-                raise PermissionError('Detenga el robot y confirme estado desarmado antes de configurar')
-            if self.dispatcher.active or not self.dispatcher.queue.empty() or self.reconfiguring:
-                raise PermissionError('Espere a que terminen las tareas pendientes')
+            if self.dispatcher.safety.session or self.dispatcher.state.get("armed"):
+                raise PermissionError(
+                    "Detenga el robot y confirme estado desarmado antes de configurar"
+                )
+            if (
+                self.dispatcher.active
+                or not self.dispatcher.queue.empty()
+                or self.reconfiguring
+            ):
+                raise PermissionError("Espere a que terminen las tareas pendientes")
             self.reconfiguring = True
-            self.dispatcher.safety.invalidate('Cambio de configuración')
+            self.dispatcher.safety.invalidate("Cambio de configuración")
+
         def apply():
             previous = self.config
             try:
@@ -129,12 +158,17 @@ class Application:
                 self.vision.stop()
                 self.camera.stop()
                 self.dispatcher.close()
-                if self.dispatcher.safety.status.startswith('Parada no confirmada'):
-                    raise PermissionError('Confirme la parada con el equipo anterior antes de cambiar configuración')
+                if self.dispatcher.safety.status.startswith("Parada no confirmada"):
+                    raise PermissionError(
+                        "Confirme la parada con el equipo anterior antes de cambiar configuración"
+                    )
                 save(new)
                 self.config = new
                 self._compose()
-                self.event('configured', 'Configuración guardada. Conexión y armado explícitos requeridos.')
+                self.event(
+                    "configured",
+                    "Configuración guardada. Conexión y armado explícitos requeridos.",
+                )
             except Exception:
                 if not self.dispatcher.worker.is_alive():
                     self.config = previous
@@ -142,78 +176,146 @@ class Application:
                 raise
             finally:
                 self.reconfiguring = False
+
         self.job(apply, internal=True)
 
     def capture(self, shape, color, session):
         camera = self.camera
-        self.job(lambda: self._capture_now(shape,color,session, expected_camera=camera))
+        self.job(
+            lambda: self._capture_now(shape, color, session, expected_camera=camera)
+        )
 
     def capture_guard(self):
         if self.closing.is_set() or self.reconfiguring:
-            raise PermissionError('Captura cancelada por cierre o reconfiguración')
-        state=self.dispatcher.state
-        if state.get('armed') or state.get('motor_activo') or state.get('brazo_ocupado') or self.dispatcher.safety.session or self.dispatcher.active or not self.dispatcher.queue.empty():
-            raise PermissionError('Capturar con el robot desarmado y actuadores en reposo')
+            raise PermissionError("Captura cancelada por cierre o reconfiguración")
+        state = self.dispatcher.state
+        if (
+            state.get("armed")
+            or state.get("motor_activo")
+            or state.get("brazo_ocupado")
+            or self.dispatcher.safety.session
+            or self.dispatcher.active
+            or not self.dispatcher.queue.empty()
+        ):
+            raise PermissionError(
+                "Capturar con el robot desarmado y actuadores en reposo"
+            )
 
     def _capture_now(self, shape, color, session, frame=None, expected_camera=None):
-        if expected_camera is not None and expected_camera is not self.camera: raise ValueError('La cámara cambió')
-        self.capture_guard()
-        snap=self.camera.snapshot()
-        if not snap['fresh']: raise ValueError('No hay fotograma fresco')
-        frame=frame or snap['frame']
-        if frame.generation!=snap['frame'].generation: raise ValueError('La sesión de cámara cambió')
-        path,record=self.dataset.save_record(frame,shape,color,session,self.config,self.capture_guard)
-        self.event('quality',record['quality'])
-        self.event('capture',(path,self.dataset.counts()))
+        if not self.capture_lock.acquire(blocking=False):
+            raise RuntimeError('Ya hay una captura en curso')
+        try:
+            return self._write_capture(shape,color,session,frame,expected_camera)
+        finally:
+            self.capture_lock.release()
 
-    def start_burst(self,shape,color,session,count=None,interval=None):
-        options=self.config['dataset_options']
-        self.burst.start(shape,color,session,count if count is not None else options['burst_count'],interval if interval is not None else options['burst_interval_s'])
+    def _write_capture(self,shape,color,session,frame,expected_camera):
+        if expected_camera is not None and expected_camera is not self.camera:
+            raise ValueError("La cámara cambió")
+        self.capture_guard()
+        snap = self.camera.snapshot()
+        if not snap["fresh"]:
+            raise ValueError("No hay fotograma fresco")
+        frame = frame or snap["frame"]
+        if frame.generation != snap["frame"].generation:
+            raise ValueError("La sesión de cámara cambió")
+        path, record = self.dataset.save_record(
+            frame, shape, color, session, self.config, self.capture_guard
+        )
+        self.event("quality", record["quality"])
+        self.event("capture", (path, self.dataset.counts()))
+
+    def start_burst(self, shape, color, session, count=None, interval=None):
+        options = self.config["dataset_options"]
+        self.burst.start(
+            shape,
+            color,
+            session,
+            count if count is not None else options["burst_count"],
+            interval if interval is not None else options["burst_interval_s"],
+        )
 
     def record_calibration(self, movement, ms, measurement, unit):
-        if movement not in self.config['patterns']:
-            raise ValueError('Movimiento inválido')
-        integer(ms, self.config['pulse_min_ms'], self.config['pulse_max_ms'], 'ms')
+        if movement not in self.config["patterns"]:
+            raise ValueError("Movimiento inválido")
+        integer(ms, self.config["pulse_min_ms"], self.config["pulse_max_ms"], "ms")
         import math
-        if not math.isfinite(measurement) or not 0 <= measurement < 10000 or unit not in ('cm', 'grados'):
-            raise ValueError('Medición o unidad inválida')
+
+        if (
+            not math.isfinite(measurement)
+            or not 0 <= measurement < 10000
+            or unit not in ("cm", "grados")
+        ):
+            raise ValueError("Medición o unidad inválida")
+
         def task():
-            path = ROOT / 'calibration' / 'mediciones.csv'
+            path = ROOT / "calibration" / "mediciones.csv"
             path.parent.mkdir(exist_ok=True)
             new = not path.exists()
-            with path.open('a', newline='', encoding='utf-8') as stream:
+            with path.open("a", newline="", encoding="utf-8") as stream:
                 writer = csv.writer(stream)
                 if new:
-                    writer.writerow(['fecha', 'movimiento', 'pulso_ms', 'medicion_humana', 'unidad', 'modo'])
-                writer.writerow([datetime.now().astimezone().isoformat(), movement, ms, measurement, unit,
-                                 'simulacion' if self.config['simulation'] else 'real'])
-            self.event('info', 'Medición humana registrada en calibration/mediciones.csv')
+                    writer.writerow(
+                        [
+                            "fecha",
+                            "movimiento",
+                            "pulso_ms",
+                            "medicion_humana",
+                            "unidad",
+                            "modo",
+                        ]
+                    )
+                writer.writerow(
+                    [
+                        datetime.now().astimezone().isoformat(),
+                        movement,
+                        ms,
+                        measurement,
+                        unit,
+                        "simulacion" if self.config["simulation"] else "real",
+                    ]
+                )
+            self.event(
+                "info", "Medición humana registrada en calibration/mediciones.csv"
+            )
+
         self.job(task)
 
     def export_logs(self):
         def task():
             import shutil
-            target = ROOT / 'evidencias' / ('registros_' + datetime.now().strftime('%Y%m%d_%H%M%S'))
+
+            target = (
+                ROOT
+                / "evidencias"
+                / ("registros_" + datetime.now().strftime("%Y%m%d_%H%M%S"))
+            )
             target.mkdir(parents=True, exist_ok=True)
-            for source in (ROOT / 'logs').glob('robot.log*'):
+            for source in (ROOT / "logs").glob("robot.log*"):
                 shutil.copy2(source, target / source.name)
-            self.event('info', 'Registros exportados a ' + str(target))
+            self.event("info", "Registros exportados a " + str(target))
+
         self.job(task)
 
     def close(self):
         if self.closed:
             return
         self.closing.set()
-        self.burst.stop()
+        if self.dispatcher.safety.connected or self.dispatcher.safety.session:
+            self.dispatcher.stop('Cierre de aplicación')
+        self.burst.cancel.set()
         try:
             with self.operation_lock:
                 try:
                     self.dispatcher.close()
                 finally:
                     try:
-                        self.vision.stop()
+                        self.burst.stop()
                     finally:
-                        self.camera.stop()
+                        try:
+                            self.vision.stop()
+                        finally:
+                            self.camera.stop()
         finally:
             if threading.current_thread() is not self.worker:
                 self.worker.join(5)

@@ -1,4 +1,5 @@
 """Contratos compartidos; ningún valor desconocido se presenta como medición."""
+
 from dataclasses import dataclass, field
 from typing import Any
 import numpy as np
@@ -10,8 +11,8 @@ class Frame:
     received_at: float
     image: np.ndarray = field(repr=False, compare=False)
     fps: float = 0.0
-    generation: str = ''
-    source: str = 'camara_real'
+    generation: str = ""
+    source: str = "camara_real"
 
 
 @dataclass(frozen=True)
@@ -22,8 +23,8 @@ class Observation:
     confidence: float | None = None
     alignment_error: float | None = None
     proximity: float | None = None
-    stage: str = 'Pendiente de implementación'
-    generation: str = ''
+    stage: str = "Pendiente de implementación"
+    generation: str = ""
     received_at: float = 0.0
     dimensions: tuple = ()
     transform: dict = field(default_factory=dict)
@@ -31,11 +32,11 @@ class Observation:
     objects: tuple = ()
     markers: tuple = ()
     target: Any = None
-    tracking_state: str = 'Sin objetivo'
+    tracking_state: str = "Sin objetivo"
 
 
 @dataclass(frozen=True)
 class Command:
     action: str
     params: dict[str, Any] = field(default_factory=dict)
-    owner: str = 'manual'
+    owner: str = "manual"

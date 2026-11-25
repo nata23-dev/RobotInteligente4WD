@@ -289,8 +289,15 @@ class Video(ttk.Frame):
         self.last = None
         self.processed = False
         self.empty_state = None
+        self.last_snapshot = None
+        self.viewport.bind("<Configure>", self._resize)
+
+    def _resize(self, event):
+        if self.last_snapshot is not None:
+            self.update_frame(self.last_snapshot)
 
     def update_frame(self, snap):
+        self.last_snapshot = snap
         f = snap["frame"]
         if self.processed or not snap["fresh"]:
             title = (
@@ -318,14 +325,21 @@ class Video(ttk.Frame):
             if key != self.last:
                 image = Image.fromarray(f.image[:, :, ::-1])
                 target = fit_size(image.width, image.height, size)
-                image = image.resize(target, Image.Resampling.BICUBIC if target[0] > image.width else Image.Resampling.LANCZOS)
+                image = image.resize(
+                    target,
+                    (
+                        Image.Resampling.BICUBIC
+                        if target[0] > image.width
+                        else Image.Resampling.LANCZOS
+                    ),
+                )
                 self.photo = ImageTk.PhotoImage(image)
                 self.empty.place_forget()
                 self.label.configure(image=self.photo)
                 self.label.place(relx=0.5, rely=0.5, anchor="center")
                 self.last = key
                 self.empty_state = None
-            self.badge.set("Video recibido", "success")
+            self.badge.set('fixture_prueba' if f.source=='fixture_prueba' else 'Video recibido', 'primary' if f.source=='fixture_prueba' else 'success')
         if f:
             text = f'{f.image.shape[1]} × {f.image.shape[0]}    {f.fps:.1f} FPS    Frame {f.id}    Edad {snap["age_s"]*1000:.0f} ms'
         else:

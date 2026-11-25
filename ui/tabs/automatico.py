@@ -1,18 +1,11 @@
-"""Centro de supervisión; todos los datos pendientes permanecen explícitos."""
+"""Un visor protagonista, percepción real y detalles bajo demanda."""
 
+import time
 import tkinter as tk
 from tkinter import ttk
-from ui import theme
-from ui.components.widgets import (
-    Card,
-    Metric,
-    Badge,
-    Video,
-    EventLog,
-    button,
-    label,
-    set_value,
-)
+import cv2
+from app.models import Frame
+from ui.components.widgets import Card, Video, EventLog, button, label, set_value
 
 
 class AutomaticTab(ttk.Frame):
@@ -20,30 +13,16 @@ class AutomaticTab(ttk.Frame):
         super().__init__(parent)
         self.app = app
         self.columnconfigure(0, weight=1)
-        self.rowconfigure(1, weight=1)
-        metrics = ttk.Frame(self)
-        metrics.grid(row=0, column=0, sticky="ew", pady=(0, 8))
-        for i in range(3):
-            metrics.columnconfigure(i, weight=1, uniform="metrics")
-        self.pieces = Metric(metrics, "Piezas clasificadas", "dataset")
-        self.precision = Metric(
-            metrics,
-            "Confianza CNN · sin modelo",
-            "brain",
-            accent=theme.COLORS["neural_accent"],
-        )
-        self.latency = Metric(metrics, "Latencia de comunicación p95", "clock")
-        for i, card in enumerate((self.pieces, self.precision, self.latency)):
-            card.grid(row=0, column=i, sticky="ew", padx=(0, 8) if i < 2 else 0)
-        main = ttk.Frame(self)
-        main.grid(row=1, column=0, sticky="nsew")
-        main.columnconfigure(0, weight=8, uniform="columns")
-        main.columnconfigure(1, weight=5, uniform="columns")
-        main.rowconfigure(0, weight=1)
-        camera = Card(main, padding=12)
-        camera.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+        self.rowconfigure(0, weight=1)
+        self.main = ttk.Frame(self)
+        self.main.grid(row=0, column=0, sticky="nsew")
+        self.main.columnconfigure(0, weight=3, uniform="supervision")
+        self.main.columnconfigure(1, weight=1, uniform="supervision")
+        self.main.rowconfigure(0, weight=1)
+        self.camera_card = Card(self.main, padding=8)
+        self.camera_card.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
         self.video = Video(
-            camera.body,
+            self.camera_card.body,
             configure_camera=lambda: self.winfo_toplevel().navigate_config(
                 "Conectividad"
             ),
@@ -52,174 +31,181 @@ class AutomaticTab(ttk.Frame):
         selector = ttk.Frame(self.video, style="Surface.TFrame")
         selector.grid(row=3, column=0, sticky="ew", pady=(4, 0))
         self.view = tk.StringVar(value="Original")
-        choice = ttk.Combobox(
+        select = ttk.Combobox(
             selector,
             textvariable=self.view,
-            values=["Original", "Procesada · pendiente"],
+            values=["Original", "Procesada", "Máscara"],
             state="readonly",
-            width=23,
+            width=11,
         )
-        choice.pack(side="left")
-        choice.bind("<<ComboboxSelected>>", lambda e: self.select_view())
-        label(selector, "Contornos / ArUco: pendientes", style="Muted.TLabel").pack(
-            side="right"
+        select.pack(side="left")
+        select.bind("<<ComboboxSelected>>", lambda e: self.select_view())
+        self.mask = tk.StringVar(value="combinada")
+        ttk.Combobox(
+            selector,
+            textvariable=self.mask,
+            values=["combinada", "rojo", "verde", "azul"],
+            state="readonly",
+            width=11,
+        ).pack(side="left", padx=4)
+        self.expand_button = button(
+            selector, "Ampliar", self.expand, style="Compact.TButton"
         )
-        intelligence = ttk.Frame(main)
-        intelligence.grid(row=0, column=1, sticky="nsew")
-        for column in range(2):
-            intelligence.columnconfigure(column, weight=1, uniform="ai_columns")
-        modules = [
-            (
-                "Procesamiento de imágenes",
-                "camera",
-                "Pendiente",
-                [
-                    ("Objeto", "—"),
-                    ("Color", "—"),
-                    ("Posición", "—"),
-                    ("Área aparente", "—"),
-                ],
-            ),
-            (
-                "Red neuronal",
-                "brain",
-                "Sin modelo",
-                [
-                    ("Clase", "—"),
-                    ("Confianza", "—"),
-                    ("Modelo", "—"),
-                    ("Probabilidades", "— / — / —"),
-                ],
-            ),
-            (
-                "Lógica difusa",
-                "fuzzy",
-                "Sin evaluar",
-                [
-                    ("Error X", "—"),
-                    ("Proximidad", "—"),
-                    ("Reglas", "—"),
-                    ("Orden / pulso", "—"),
-                ],
-            ),
-            (
-                "Heurística",
-                "dataset",
-                "Inactiva",
-                [
-                    ("Estado", "—"),
-                    ("Condición", "—"),
-                    ("Acción", "—"),
-                    ("Destino", "—"),
-                ],
-            ),
-        ]
-        self.module_cards = []
-        for i, (title, symbol, status, values) in enumerate(modules):
-            intelligence.rowconfigure(i // 2, weight=1, uniform="modules")
-            card = Card(intelligence, padding=4)
-            card.grid(
-                row=i // 2,
-                column=i % 2,
-                sticky="nsew",
-                padx=(0, 6) if i % 2 == 0 else 0,
-                pady=(0, 6) if i < 2 else 0,
-            )
-            heading = ttk.Frame(card.body, style="Surface.TFrame")
-            heading.pack(fill="x")
-            label(
-                heading, "Imágenes" if i == 0 else title, font=("Segoe UI", 10, "bold")
-            ).pack(anchor="w")
-            label(
-                heading,
-                status,
-                style="Muted.TLabel",
-                foreground=theme.COLORS["neural_text"] if i in (1, 2) else theme.MUTED,
-            ).pack(anchor="w")
-            fields = ttk.Frame(card.body, style="Surface.TFrame")
-            fields.pack(fill="x")
-            for j, (name, value) in enumerate(values):
-                fields.columnconfigure(j % 2, weight=1)
-                short_name = (
-                    "Área"
-                    if name == "Área aparente"
-                    else "Mov./ms" if name == "Orden / pulso" else name
-                )
-                wide = name == "Probabilidades"
-                label(fields, f"{short_name}: {value}", style="Muted.TLabel").grid(
-                    row=2 if wide else j // 2,
-                    column=0 if wide else j % 2,
-                    columnspan=2 if wide else 1,
-                    sticky="w",
-                )
-            self.module_cards.append(card)
-        cycle = Card(self, padding=8)
-        cycle.grid(row=2, column=0, sticky="ew", pady=(8, 0))
+        self.expand_button.pack(side="right")
+        self.side = Card(self.main, padding=10)
+        self.side.grid(row=0, column=1, sticky="nsew")
+        label(self.side.body, "Objetivo visual", font=("Segoe UI", 12, "bold")).pack(
+            anchor="w"
+        )
+        self.context = tk.StringVar(value="Sin observación vigente")
+        self.context_label = label(
+            self.side.body, textvariable=self.context, wraplength=210, justify="left"
+        )
+        self.context_label.pack(anchor="w", fill="x", pady=12)
         label(
-            cycle.body,
-            "CICLO AUTÓNOMO   ·   Pendiente de integración",
+            self.side.body,
+            "CNN, difusa y heurística\nsin implementar.\nAutonomía bloqueada.",
             style="Muted.TLabel",
+            wraplength=210,
+        ).pack(anchor="w", pady=8)
+        button(
+            self.side.body,
+            "Detalles técnicos",
+            self.toggle_details,
+            style="Compact.TButton",
+        ).pack(fill="x", pady=4)
+        button(
+            self.side.body,
+            "Registro de eventos",
+            self.toggle_details,
+            style="Compact.TButton",
+        ).pack(fill="x", pady=4)
+        self.details = Card(self, padding=6)
+        self.details.grid(row=1, column=0, sticky="ew", pady=(6, 0))
+        self.details.grid_remove()
+        self.detail_var = tk.StringVar()
+        label(
+            self.details.body,
+            textvariable=self.detail_var,
+            style="Muted.TLabel",
+            wraplength=950,
         ).pack(anchor="w")
-        steps = ttk.Frame(cycle.body, style="Surface.TFrame")
-        steps.pack(fill="x", pady=(4, 0))
-        for i, name in enumerate(
-            (
-                "Buscar",
-                "Detectar",
-                "Alinear",
-                "Aproximar",
-                "Recoger",
-                "Transportar",
-                "Depositar",
-                "Verificar",
-            )
-        ):
-            steps.columnconfigure(i, weight=1)
-            label(steps, f"{i+1}  {name}", style="Muted.TLabel").grid(
-                row=0, column=i, sticky="w"
-            )
+        self.log = EventLog(self.details.body, height=2)
+        self.log.pack(fill="both", expand=True)
+        self.log.append("SISTEMA", "Solo percepción visual. Autonomía bloqueada.")
         bottom = ttk.Frame(self)
-        bottom.grid(row=3, column=0, sticky="ew", pady=(8, 0))
+        bottom.grid(row=2, column=0, sticky="ew", pady=(6, 0))
         bottom.columnconfigure(0, weight=1)
-        journal = Card(bottom, padding=8)
-        journal.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
-        header = ttk.Frame(journal.body, style="Surface.TFrame")
-        header.pack(fill="x")
-        label(header, "Registro de decisiones", font=("Segoe UI", 10, "bold")).pack(
-            side="left"
+        self.cycle = label(
+            bottom,
+            "1 Buscar · 2 Detectar · 3 Alinear · 4 Aproximar\n5 Recoger · 6 Transportar · 7 Depositar · 8 Verificar",
+            style="Muted.TLabel",
         )
-        button(
-            header, "Limpiar vista", lambda: self.log.clear(), style="Compact.TButton"
-        ).pack(side="right")
-        self.log = EventLog(journal.body, height=1)
-        self.log.pack(fill="both", expand=True, pady=(4, 0))
+        self.cycle.grid(row=0, column=0, sticky="w")
         actions = ttk.Frame(bottom)
-        actions.grid(row=0, column=1, sticky="s")
-        self.start = button(
-            actions, "▶  Iniciar", style="Primary.TButton", state="disabled"
-        )
-        self.start.pack(side="left", padx=(0, 6))
-        self.pause = button(actions, "Ⅱ  Pausar", state="disabled")
-        self.pause.pack(side="left", padx=(0, 6))
+        actions.grid(row=0, column=1, sticky="e")
+        self.start = button(actions, "Iniciar", state="disabled")
+        self.start.pack(side="left", padx=3)
+        self.pause = button(actions, "Pausar", state="disabled")
+        self.pause.pack(side="left", padx=3)
         button(
-            actions, "■  Detener", lambda: app.dispatcher.stop(), style="Danger.TButton"
+            actions, "Detener", lambda: app.dispatcher.stop(), style="Danger.TButton"
         ).pack(side="left")
-        self.log.append(
-            "SISTEMA", "Aplicación iniciada; autonomía pendiente de integración."
-        )
+        self.expanded = False
 
     def select_view(self):
         self.video.processed = self.view.get() != "Original"
         self.video.empty_state = None
 
-    def refresh(self, metrics):
-        v = metrics["p95"]
+    def toggle_details(self):
+        if self.details.winfo_manager():
+            self.details.grid_remove()
+        else:
+            self.details.grid()
+
+    def expand(self):
+        self.expanded = not self.expanded
+        if self.expanded:
+            self.side.grid_remove()
+            self.main.columnconfigure(1, weight=0, minsize=0, uniform="")
+            self.main.columnconfigure(0, weight=1, uniform="")
+        else:
+            self.side.grid()
+            self.main.columnconfigure(0, weight=3, uniform="supervision")
+            self.main.columnconfigure(1, weight=1, uniform="supervision")
+        self.expand_button.configure(text="Restaurar" if self.expanded else "Ampliar")
+
+    def update_video(self, snap):
+        v = self.app.vision.snapshot()
+        r = v["result"]
+        if r is None:
+            self.video.update_frame(dict(snap, frame=None, fresh=False))
+            set_value(
+                self.context,
+                "Sin observación vigente\n\nDestino sin determinar\nAcción: ninguna\nClasificadas: sin contador",
+            )
+            return
+        o = r.observation
+        mode = self.view.get()
+        image = (
+            r.normalized
+            if mode == "Original"
+            else (
+                cv2.cvtColor(r.masks[self.mask.get()], cv2.COLOR_GRAY2BGR)
+                if mode == "Máscara"
+                else r.overlay
+            )
+        )
+        f = Frame(
+            r.frame.id,
+            r.frame.received_at,
+            image,
+            r.frame.fps,
+            r.frame.generation + mode + self.mask.get(),
+            r.frame.source,
+        )
+        self.video.processed = False
+        self.video.update_frame(
+            dict(
+                snap,
+                frame=f,
+                fresh=True,
+                age_s=time.monotonic() - f.received_at,
+                status=f.source,
+            )
+        )
+        h, w = r.frame.image.shape[:2]
         set_value(
-            self.latency.value,
-            (
-                "—"
-                if v is None
-                else f"{v:.1f} ms"
-                + (" · sim." if self.app.config["simulation"] else "")
-            ),
+            self.video.metrics,
+            f"Recibida {w} × {h} · Vista {image.shape[1]} × {image.shape[0]} · {f.fps:.1f} FPS · #{f.id} · {f.source}",
+        )
+        target = o.target
+        set_value(
+            self.context,
+            f'{o.tracking_state}\n\nColor: {target.color if target else "sin objetivo"}\nForma: sin modelo CNN\nDestino: sin determinar\nAcción: ninguna\nDecisión: solo observación\nClasificadas: sin contador',
+        )
+        self.context_label.configure(wraplength=max(100, self.side.winfo_width() - 28))
+
+    def refresh(self, metrics):
+        v = self.app.vision.snapshot()
+        r = v["result"]
+        if not r:
+            set_value(
+                self.detail_var,
+                "Sin percepción vigente. CNN: sin modelo. Difusa y heurística: sin implementar.",
+            )
+            return
+        o = r.observation
+        objects = (
+            "; ".join(
+                f"{x.color} caja={x.box} c=({x.centroid[0]:.0f},{x.centroid[1]:.0f}) área={x.area:.0f} errorX={x.error_x:+.2f}"
+                for x in o.objects[:6]
+            )
+            or "ninguno"
+        )
+        set_value(
+            self.detail_var,
+            f"Objetos ({len(o.objects)}): {objects}\nMarcadores: "
+            + ", ".join(f'{m.id}: {m.station or "desconocido"}' for m in o.markers)
+            + f'\nRecepción {r.frame.fps:.1f} FPS · proceso {v["fps"]:.1f} FPS / {o.processing_ms:.1f} ms · edad {(time.monotonic()-r.frame.received_at)*1000:.0f} ms · HTTP p95 {metrics["p95"]} ms · errores visión {v["errors"]}\nCNN: sin modelo/clase/confianza/probabilidades. Difusa: sin entradas/pertenencias/reglas/salidas. Heurística: sin estado/condición/acción/destino.',
         )
